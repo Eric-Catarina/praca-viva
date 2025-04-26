@@ -352,7 +352,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 813277080}
-  - {fileID: 1725837458}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -375,10 +374,14 @@ MonoBehaviour:
   notificationPrefab: {fileID: 3747787521102453463, guid: 15c10038348591011902948ba8e3a489,
     type: 3}
   notificationContainer: {fileID: 1725837458}
+  appearDuration: 0.5
+  appearScaleOvershoot: 1.7
+  appearWobbleIntensity: 10
+  appearWobbleVibrato: 10
   displayDuration: 3
-  fadeInDuration: 0.4
-  fadeOutDuration: 0.6
-  moveUpDistance: 50
+  disappearDuration: 0.4
+  disappearScalePull: 1
+  heightShrinkEase: 5
 --- !u!1 &129459489
 GameObject:
   m_ObjectHideFlags: 0
@@ -1454,7 +1457,7 @@ GameObject:
   - component: {fileID: 813277082}
   - component: {fileID: 813277081}
   m_Layer: 5
-  m_Name: Panel
+  m_Name: MainPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1472,6 +1475,7 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 1725837458}
   - {fileID: 1538036907}
   - {fileID: 816452703}
   m_Father: {fileID: 122523258}
@@ -2301,7 +2305,7 @@ GameObject:
   - component: {fileID: 1538036909}
   - component: {fileID: 1538036908}
   m_Layer: 5
-  m_Name: Panel
+  m_Name: NetworkPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2328,7 +2332,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: -169.038, y: -92.3562}
+  m_SizeDelta: {x: -1398.781, y: -92.356}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1538036908
 MonoBehaviour:
@@ -2369,7 +2373,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 0.392}
+  m_Color: {r: 0.9769909, g: 0.5179193, b: 0.5179193, a: 0.392}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -2554,17 +2558,17 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1725837457}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 405737303}
-  m_Father: {fileID: 122523258}
+  m_Father: {fileID: 813277080}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 93, y: -90}
   m_SizeDelta: {x: 247.939, y: 117.578}
   m_Pivot: {x: 0, y: 1}
 --- !u!114 &1725837459

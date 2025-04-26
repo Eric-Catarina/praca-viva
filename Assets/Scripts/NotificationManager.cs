@@ -1,94 +1,132 @@
 using UnityEngine;
-using UnityEngine.UI; // Para LayoutRebuilder
+using UnityEngine.UI;
 using TMPro;
-using DG.Tweening; // Namespace do DoTween
+using DG.Tweening;
 
-public class NotificationManager : MonoBehaviour
+// Certifique-se que este script esteja anexado a um objeto na cena
+// e as referências 'notificationPrefab' e 'notificationContainer' estejam corretamente atribuídas no Inspector.
+public class NotificationManager : MonoBehaviour // Ou NotificationManagerSimple
 {
     [Header("Setup")]
-    [Tooltip("O Prefab do painel de notificação (com CanvasGroup e TextMeshProUGUIs dentro)")]
-    public GameObject notificationPrefab; // Arraste seu Prefab aqui
+    [Tooltip("IMPORTANTE: O Prefab DEVE ter os componentes CanvasGroup e LayoutElement em seu objeto raiz.")]
+    public GameObject notificationPrefab;
 
-    [Tooltip("O GameObject que contém o VerticalLayoutGroup onde as notificações serão adicionadas")]
-    public RectTransform notificationContainer; // Arraste o GameObject pai (com VerticalLayoutGroup) aqui
+    [Tooltip("IMPORTANTE: O Container DEVE ter um VerticalLayoutGroup configurado corretamente.")]
+    public RectTransform notificationContainer;
 
-    [Header("Animation Settings")]
-    [Tooltip("Quanto tempo a notificação fica totalmente visível")]
+    [Header("Appear Animation")]
+    public float appearDuration = 0.5f;
+    [Range(1f, 3f)] public float appearScaleOvershoot = 1.7f;
+    public float appearWobbleIntensity = 10f;
+    public int appearWobbleVibrato = 10;
+
+    [Header("Display & Disappear Animation")]
     public float displayDuration = 3.0f;
-    [Tooltip("Duração do fade in e movimento inicial")]
-    public float fadeInDuration = 0.4f;
-    [Tooltip("Duração do fade out final")]
-    public float fadeOutDuration = 0.6f;
-    [Tooltip("Distância vertical que a notificação sobe ao aparecer")]
-    public float moveUpDistance = 50f;
+    public float disappearDuration = 0.4f;
+    [Range(0.5f, 2f)] public float disappearScalePull = 1.0f;
+    [Tooltip("Ease para a animação de encolhimento de altura")]
+    public Ease heightShrinkEase = Ease.InQuad;
 
-    // Método público para ser chamado quando uma mensagem chegar
     public void ShowNotification(string senderName, string message)
     {
-        if (notificationPrefab == null || notificationContainer == null)
-        {
-            Debug.LogError("Notification Prefab or Container not set in NotificationManagerSimple!");
-            return;
-        }
+        // --- Verificações Iniciais ---
+        if (notificationPrefab == null) { Debug.LogError("Notification Prefab not assigned!"); return; }
+        if (notificationContainer == null) { Debug.LogError("Notification Container not assigned!"); return; }
+        if (notificationContainer.GetComponent<VerticalLayoutGroup>() == null) { Debug.LogWarning("Notification Container is missing VerticalLayoutGroup!"); }
 
-        // 1. Instancia o Prefab diretamente como filho do container
-        // O VerticalLayoutGroup no 'notificationContainer' vai posicioná-lo automaticamente.
+        // --- Instanciação e Configuração do Texto ---
         GameObject notificationInstance = Instantiate(notificationPrefab, notificationContainer);
 
-        // 2. Encontra os componentes de texto dentro da instância recém-criada
-        // Adapte "SenderText" e "MessageText" para os nomes reais dos GameObjects no seu Prefab
         TextMeshProUGUI senderText = notificationInstance.transform.Find("SenderText")?.GetComponent<TextMeshProUGUI>();
         TextMeshProUGUI messageText = notificationInstance.transform.Find("MessageText")?.GetComponent<TextMeshProUGUI>();
 
-        // 3. Define o texto
         if (senderText != null) senderText.text = senderName;
+        else Debug.LogWarning("Could not find 'SenderText' TMP_Text on prefab instance.");
+
         if (messageText != null) messageText.text = message;
+        else Debug.LogWarning("Could not find 'MessageText' TMP_Text on prefab instance.");
 
-        // 4. Força o Layout Group a recalcular imediatamente (útil se o tamanho do texto mudar)
-        LayoutRebuilder.ForceRebuildLayoutImmediate(notificationContainer); // Recalcula o container pai
+        // --- Forçar Layout e Obter Componentes ---
+        // Força o VLG a calcular posições/tamanhos imediatamente
+        LayoutRebuilder.ForceRebuildLayoutImmediate(notificationContainer);
 
-        // 5. Pega referências para animar (CanvasGroup é essencial para fade)
         CanvasGroup canvasGroup = notificationInstance.GetComponent<CanvasGroup>();
         RectTransform rectTransform = notificationInstance.GetComponent<RectTransform>();
+        LayoutElement layoutElement = notificationInstance.GetComponent<LayoutElement>(); // <<< Pega o LayoutElement
 
-        if (canvasGroup == null)
-        {
-            Debug.LogError("Notification Prefab needs a CanvasGroup component for animations!");
-            Destroy(notificationInstance); // Destroi se não puder animar
-            return;
+        // --- Verificações de Componentes Cruciais ---
+        if (canvasGroup == null) { Debug.LogError("Prefab is MISSING CanvasGroup component!"); Destroy(notificationInstance); return; }
+        if (layoutElement == null) { Debug.LogError("Prefab is MISSING LayoutElement component! Smooth vertical movement will FAIL."); Destroy(notificationInstance); return; }
+
+        // Define a altura preferida inicial baseada no tamanho calculado pelo VLG,
+        // se ela não estiver definida (> -1) no prefab. Isso é importante para a animação de altura.
+        float initialHeight = rectTransform.sizeDelta.y;
+        if (layoutElement.preferredHeight < 0) {
+             layoutElement.preferredHeight = initialHeight;
         }
 
+
         // --- Animação com DoTween Sequence ---
-
-        // 6. Define o estado inicial ANTES da animação
-        canvasGroup.alpha = 0f; // Começa totalmente transparente
-        // Move para baixo inicialmente para poder "subir" para a posição correta
-        rectTransform.anchoredPosition = new Vector2(rectTransform.anchoredPosition.x, rectTransform.anchoredPosition.y - moveUpDistance);
-
-        // 7. Cria a sequência de animação
         Sequence sequence = DOTween.Sequence();
 
-        // A. Aparecer: Fade In + Mover para cima (para a posição final definida pelo Layout Group)
-        sequence.Append(canvasGroup.DOFade(1f, fadeInDuration).SetEase(Ease.OutQuad));
-        sequence.Join(rectTransform.DOAnchorPosY(rectTransform.anchoredPosition.y + moveUpDistance, fadeInDuration).SetEase(Ease.OutQuad));
+        // 1. Estado Inicial para Aparecer
+        canvasGroup.alpha = 0f;
+        rectTransform.localScale = Vector3.zero;
 
-        // B. Esperar: Fica visível pela duração definida
+        // --- Parte A: Aparecer (Animações de entrada) ---
+        Tween fadeIn = canvasGroup.DOFade(1f, appearDuration * 0.6f).SetEase(Ease.Linear);
+        Tween scaleUp = rectTransform.DOScale(1f, appearDuration).SetEase(Ease.OutBack, appearScaleOvershoot);
+        Tween wobble = rectTransform.DOShakeRotation(appearDuration, new Vector3(0, 0, appearWobbleIntensity), appearWobbleVibrato, 90, false);
+        sequence.Append(fadeIn);
+        sequence.Join(scaleUp);
+        sequence.Join(wobble);
+
+        // --- Parte B: Esperar (Duração visível) ---
         sequence.AppendInterval(displayDuration);
 
-        // C. Desaparecer: Fade Out
-        sequence.Append(canvasGroup.DOFade(0f, fadeOutDuration).SetEase(Ease.InQuad));
+        // --- Parte C: Desaparecer (Animações de saída) ---
+        Tween fadeOut = canvasGroup.DOFade(0f, disappearDuration).SetEase(Ease.InQuad);
+        Tween scaleDown = rectTransform.DOScale(0.1f, disappearDuration).SetEase(Ease.InBack, disappearScalePull);
 
-        // D. Ao completar: Destruir o GameObject da notificação
+        // --- Animar a Altura Preferida do LayoutElement para Zero ---
+        // Esta é a chave para o movimento suave dos elementos abaixo no VLG
+        Tween heightDown = DOTween.To(
+            () => layoutElement.preferredHeight,   // Getter: Lê a altura atual
+            x => layoutElement.preferredHeight = x, // Setter: Define a nova altura animada
+            0f,                                    // Target Value: Altura final zero
+            disappearDuration                      // Duration: Mesma dos outros fades/scales
+        ).SetEase(heightShrinkEase);               // Aplica a Ease definida
+        // ---------------------------------------------------------
+
+        // Adiciona os tweens de desaparecer para executarem em paralelo
+        sequence.Append(fadeOut);
+        sequence.Join(scaleDown);
+        sequence.Join(heightDown); // <<< Junta a animação de altura
+
+        // --- Parte D: Limpeza (Após a animação completar) ---
         sequence.OnComplete(() =>
         {
-            // Garante que estamos destruindo o objeto correto, mesmo que haja um pequeno delay
+            // Garante que a instância ainda existe antes de tentar destruir
             if (notificationInstance != null)
             {
                 Destroy(notificationInstance);
             }
         });
 
-        // 8. Inicia a animação
+        // Configura a atualização e inicia a animação
+        sequence.SetUpdate(UpdateType.Normal, true); // Ignora Time.timeScale
         sequence.Play();
     }
+
+    // Se precisar do helper para atrasar destruição (alternativa/diagnóstico):
+    /*
+    private System.Collections.IEnumerator DestroyAfterDelay(GameObject instance, float delay)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        if (instance != null)
+        {
+            Destroy(instance);
+        }
+    }
+    */
 }
