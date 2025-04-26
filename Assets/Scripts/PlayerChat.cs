@@ -75,20 +75,21 @@ public class PlayerChat : NetworkBehaviour
 
 
     // --- Exemplo de como chamar o Command (precisaria de UI) ---
-    /*
-    // Este método seria chamado pelo botão "Send Message" da UI
-    public void SendChatMessage(string message)
-    {
-        if (!isLocalPlayer) // Só o jogador local pode enviar comandos por este objeto
-        {
-            Debug.LogError("Trying to send message from non-local player object!");
-            return;
-        }
+     
+     // Este método seria chamado pelo botão "Send Message" da UI
+     
+     public void SendChatMessage(string message)
+     {
+         if (!isLocalPlayer) // Só o jogador local pode enviar comandos por este objeto
+         {
+             Debug.LogError("Trying to send message from non-local player object!");
+             return;
+         }
 
-        if (string.IsNullOrWhiteSpace(message)) return;
+         if (string.IsNullOrWhiteSpace(message)) return;
 
-        Debug.Log($"Local client sending message: {message}");
-        CmdSendChatMessage(message); // Chama o comando no servidor
-    }
-    */
+         Debug.Log($"Local client sending message: {message}");
+         CmdSendChatMessage(message); // Chama o comando no servidor
+     }
+     
 }
