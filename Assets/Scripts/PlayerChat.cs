@@ -1,95 +1,103 @@
 using UnityEngine;
 using Mirror;
+using System; // <<< ADICIONADO para usar Action (eventos)
 
 public class PlayerChat : NetworkBehaviour
 {
     [SyncVar(hook = nameof(OnNameChanged))] // SyncVar sincroniza a variável do servidor para os clientes
     public string playerName = "Player"; // Nome padrão
 
+    // --- EVENTO ESTÁTICO PARA NOTIFICAR A UI ---
+    // Qualquer script (como NetworkUI) pode se inscrever neste evento.
+    // Argumentos: <nome_remetente, mensagem_recebida>
+    public static event Action<string, string> OnMessageReceived;
+    // ------------------------------------------
+
     // Este hook é chamado automaticamente em TODOS os clientes quando a SyncVar playerName muda
-    void OnNameChanged(string _oldName, string _newName)
+    void OnNameChanged(string oldName, string newName)
     {
-        Debug.Log($"Player name changed from {_oldName} to {_newName}");
-        gameObject.name = _newName; // Renomeia o GameObject na cena para clareza
+        // Mantém o nome do GameObject atualizado para facilitar a depuração na hierarquia
+        gameObject.name = $"Player [{newName}]";
+        // Debug.Log($"Player name updated from {oldName} to {newName}"); // Log opcional
     }
 
-    // Chamado no cliente quando este jogador entra no jogo
+    // Chamado no cliente quando este jogador específico entra no jogo (é o jogador local)
     public override void OnStartLocalPlayer()
     {
         base.OnStartLocalPlayer();
 
-        // Define um nome único para o jogador local e pede ao servidor para atualizá-lo
-        string uniqueName = $"Player [{netId}]"; // netId é um ID único de rede
+        // Define um nome único inicial e pede ao servidor para defini-lo via Command
+        string uniqueName = $"Player_{netId}"; // Usar netId garante unicidade na sessão
         CmdSetPlayerName(uniqueName);
 
-        // Só o jogador local pode controlar este objeto
-        Debug.Log($"Started Local Player: {uniqueName}");
-
-        // Exemplo: Se você tiver um InputField e botão para chat
-        // FindObjectOfType<ChatUI>()?.AssignLocalPlayer(this); // (Necessitaria de um script ChatUI)
+        Debug.Log($"Initialized Local Player: {uniqueName}");
     }
 
     // Commands são chamados pelo cliente, mas EXECUTADOS NO SERVIDOR
     [Command]
     public void CmdSetPlayerName(string newName)
     {
-        // Validação no servidor (opcional mas recomendado)
+        // Validação no servidor é uma boa prática
         if (string.IsNullOrWhiteSpace(newName)) return;
 
-        playerName = newName; // Mudar a SyncVar no SERVIDOR fará com que ela sincronize para os clientes
-        Debug.Log($"Server received CmdSetPlayerName: {newName}");
-
-        // Exemplo de como o servidor pode enviar uma mensagem de volta para TODOS os clientes
-        RpcLogMessage($"Player {newName} has joined!");
+        playerName = newName; // Mudar a SyncVar no SERVIDOR fará com que ela sincronize e chame o hook nos clientes
+        // Debug.Log($"Server set player name to: {newName}"); // Log opcional no servidor
     }
 
-    // Comando para enviar uma mensagem de chat
+    // Comando para enviar uma mensagem de chat: chamado pela UI do cliente, executado no SERVIDOR
     [Command]
     public void CmdSendChatMessage(string message)
     {
         // Validação no servidor
-        if (string.IsNullOrWhiteSpace(message)) return;
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            Debug.LogWarning($"Player {playerName} tried to send an empty message.");
+            return;
+        }
 
-        Debug.Log($"Server received chat message from {playerName}: {message}");
+        // Debug.Log($"Server received chat from {playerName}: {message}"); // Log opcional no servidor
 
-        // Envia a mensagem para todos os clientes
-        RpcReceiveChatMessage(playerName, message);
+        // O servidor recebeu, agora distribui para todos os clientes via ClientRpc
+        RpcReceiveChatMessage(playerName, message); // Usa o playerName atual do jogador no servidor
     }
 
-    // ClientRpcs são chamados pelo servidor, mas EXECUTADOS EM TODOS OS CLIENTES
+    // ClientRpcs são chamados pelo servidor, mas EXECUTADOS EM TODOS OS CLIENTES conectados
     [ClientRpc]
-    public void RpcLogMessage(string message)
+    public void RpcLogMessage(string message) // Este RPC parece ser para logs gerais, mantido como estava
     {
         // Executado em todos os clientes
-        Debug.Log($"Client received log message: {message}");
+        Debug.Log($"Client Log Message: {message}");
     }
 
     [ClientRpc]
     public void RpcReceiveChatMessage(string senderName, string message)
     {
-        // Executado em todos os clientes
-        Debug.Log($"CHAT [{senderName}]: {message}");
-        // Aqui você atualizaria a UI do chat no cliente
-        // FindObjectOfType<ChatUI>()?.DisplayMessage(senderName, message); // (Necessitaria de um script ChatUI)
+        // Este código é executado em CADA cliente quando uma mensagem de chat chega.
+
+        // <<< MODIFICADO: Invoca o evento estático >>>
+        // A UI (NetworkUI) estará ouvindo este evento para mostrar a notificação.
+        OnMessageReceived?.Invoke(senderName, message);
+        // ---------------------------------------------
+
+        // O antigo Debug.Log foi movido ou substituído pela lógica do evento/UI.
+        // Você pode adicionar um log aqui se ainda quiser confirmação no console do cliente:
+        // Debug.Log($"Client received RPC: [{senderName}] {message} - Invoking OnMessageReceived event.");
     }
 
-
-    // --- Exemplo de como chamar o Command (precisaria de UI) ---
-     
-     // Este método seria chamado pelo botão "Send Message" da UI
-     
+    // --- Método antigo para chamar o Command, agora redundante ---
+    /*
+     // Este método NÃO é mais necessário aqui, pois o NetworkUI.SendChatMessageButton
+     // agora encontra o PlayerChat local e chama CmdSendChatMessage diretamente.
      public void SendChatMessage(string message)
      {
-         if (!isLocalPlayer) // Só o jogador local pode enviar comandos por este objeto
+         if (!isLocalPlayer)
          {
              Debug.LogError("Trying to send message from non-local player object!");
              return;
          }
-
          if (string.IsNullOrWhiteSpace(message)) return;
-
          Debug.Log($"Local client sending message: {message}");
-         CmdSendChatMessage(message); // Chama o comando no servidor
+         CmdSendChatMessage(message);
      }
-     
+    */
 }

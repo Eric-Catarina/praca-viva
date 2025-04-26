@@ -2,198 +2,255 @@ using UnityEngine;
 using Mirror;
 using Mirror.Discovery; // Necessário para Network Discovery
 using TMPro;
+using System; // Necessário para Action (eventos)
 
 public class NetworkUI : MonoBehaviour
 {
     [Header("Network Components")]
     [Tooltip("Assign the NetworkManager GameObject (or leave empty if using Singleton)")]
-    public NetworkManager networkManager; // Pode continuar usando singleton se preferir
+    public NetworkManager networkManager;
 
-    [Tooltip("Assign the NetworkDiscovery GameObject here")]
-    public NetworkDiscovery networkDiscovery; // Referência ao componente Discovery
+    [Tooltip("Assign the NetworkDiscovery component/GameObject here")]
+    public NetworkDiscovery networkDiscovery;
 
     [Header("UI Elements")]
     [Tooltip("Assign the InputField for sending chat messages")]
-    public TMP_InputField messageInput; // Seu InputField de chat existente
+    public TMP_InputField messageInput;
 
-    [Tooltip("Optional: Text to display network status")]
-    public TextMeshProUGUI statusText; // Para dar feedback ao usuário
+    [Tooltip("Optional: Text to display network status messages")]
+    public TextMeshProUGUI statusText;
 
-    void Start()
+    [Header("Managers")]
+    [Tooltip("Assign the GameObject/Component responsible for showing notifications")]
+    public NotificationManager notificationManager; // Sua classe simplificada pode chamar NotificationManagerSimple
+
+    #region Unity Lifecycle & Event Subscription
+
+    void Awake()
     {
-        // Garante que temos as referências necessárias
-        if (networkManager == null) networkManager = NetworkManager.singleton;
-        if (networkDiscovery == null)
-        {
-            networkDiscovery = FindObjectOfType<NetworkDiscovery>(); // Tenta encontrar se não foi atribuído
-            if (networkDiscovery == null)
-                Debug.LogError("NetworkDiscovery component not found or not assigned in the Inspector!");
-        }
-
-        // --- IMPORTANTE: Registrar o listener para o evento OnServerFound ---
-        if (networkDiscovery != null)
-        {
-            networkDiscovery.OnServerFound.AddListener(OnDiscoveredServer);
-            UpdateStatus("Idle");
-        }
-        else
-        {
-            UpdateStatus("Error: Discovery Missing!");
-        }
+        // Garante referências e se inscreve nos eventos ANTES de qualquer Start
+        InitializeReferences();
+        SubscribeToEvents();
     }
 
     void OnDestroy()
     {
-        // --- IMPORTANTE: Remover o listener quando o objeto for destruído ---
+        // IMPORTANTE: Se desinscrever para evitar memory leaks e erros
+        UnsubscribeFromEvents();
+         // Garante que a descoberta pare se este objeto for destruído
+        if (networkDiscovery != null )
+        {
+            networkDiscovery.StopDiscovery();
+        }
+    }
+
+    void InitializeReferences()
+    {
+        if (networkManager == null) networkManager = NetworkManager.singleton;
+        if (networkDiscovery == null) networkDiscovery = FindObjectOfType<NetworkDiscovery>();
+        if (notificationManager == null) notificationManager = FindObjectOfType<NotificationManager>(); // Ajuste o tipo se renomeou para NotificationManagerSimple
+
+        // Log de erros se algo essencial estiver faltando
+        if (networkManager == null) Debug.LogError("FATAL: NetworkManager not found!");
+        if (networkDiscovery == null) Debug.LogError("NetworkDiscovery component not found! Discovery features will fail.");
+        if (notificationManager == null) Debug.LogWarning("NotificationManager not found! Chat messages will not pop up.");
+        if (messageInput == null) Debug.LogWarning("Message InputField not assigned in NetworkUI.");
+    }
+
+    void SubscribeToEvents()
+    {
+        // Inscreve-se no evento estático do PlayerChat
+        PlayerChat.OnMessageReceived += HandleChatMessageReceived;
+
+        // Inscreve-se no evento de descoberta de servidor
+        if (networkDiscovery != null)
+        {
+            networkDiscovery.OnServerFound.AddListener(OnDiscoveredServer);
+        }
+
+        // (Opcional mas recomendado) Inscreva-se nos eventos do NetworkManager para feedback
+        // networkManager.onClientConnect += OnClientConnect;
+        // networkManager.onClientDisconnect += OnClientDisconnect;
+        // networkManager.onServerError += OnServerError;
+        // networkManager.onClientError += OnClientError;
+    }
+
+    void UnsubscribeFromEvents()
+    {
+        // Desinscreve-se do evento estático do PlayerChat
+        PlayerChat.OnMessageReceived -= HandleChatMessageReceived;
+
+        // Desinscreve-se do evento de descoberta
         if (networkDiscovery != null)
         {
             networkDiscovery.OnServerFound.RemoveListener(OnDiscoveredServer);
         }
+
+        // (Opcional) Desinscreva-se dos eventos do NetworkManager
+        // networkManager.onClientConnect -= OnClientConnect;
+        // networkManager.onClientDisconnect -= OnClientDisconnect;
+        // networkManager.onServerError -= OnServerError;
+        // networkManager.onClientError -= OnClientError;
     }
 
-    // --- Métodos dos Botões ---
+    #endregion
+
+    #region Chat Handling
+
+    // Este método é CHAMADO PELO EVENTO estático PlayerChat.OnMessageReceived
+    private void HandleChatMessageReceived(string sender, string message)
+    {
+        if (notificationManager != null)
+        {
+            notificationManager.ShowNotification(sender, message);
+        }
+        else
+        {
+            // Fallback: Loga no console se não puder mostrar notificação
+            Debug.Log($"[CHAT] {sender}: {message}");
+        }
+    }
+
+    // Método chamado pelo BOTÃO "Send" da UI
+    public void SendChatMessageButton()
+    {
+        if (messageInput == null || string.IsNullOrWhiteSpace(messageInput.text))
+        {
+            Debug.LogWarning("Cannot send empty message.");
+            return;
+        }
+
+        // Precisamos do objeto do JOGADOR LOCAL para enviar o comando
+        GameObject localPlayerObject = NetworkClient.localPlayer?.gameObject;
+        if (localPlayerObject != null)
+        {
+            PlayerChat localPlayerChat = localPlayerObject.GetComponent<PlayerChat>();
+            if (localPlayerChat != null)
+            {
+                string messageToSend = messageInput.text;
+                messageInput.text = ""; // Limpa o input
+
+                localPlayerChat.CmdSendChatMessage(messageToSend); // Envia o comando
+            }
+            else
+            {
+                Debug.LogError("Local player GameObject does not have PlayerChat component!");
+            }
+        }
+        else
+        {
+            Debug.LogError("Cannot send message: NetworkClient.localPlayer not found. Are you connected?");
+        }
+    }
+
+    #endregion
+
+    #region Network Connection & Discovery Buttons
 
     public void StartHostButton()
     {
-        if (!NetworkClient.isConnected && !NetworkServer.active)
-        {
-            UpdateStatus("Starting Host...");
-            networkManager.StartHost();
-            Debug.Log("Host Started");
-
-            // >>> NOVO: Começa a anunciar o servidor na rede <<<
-            if (networkDiscovery != null)
-            {
-                 networkDiscovery.StopDiscovery(); // Garante que não está procurando ao mesmo tempo
-                networkDiscovery.AdvertiseServer();
-                UpdateStatus("Hosting & Advertising...");
-                Debug.Log("Advertising Server Started");
-            } else {
-                 UpdateStatus("Hosting (Discovery OFF)");
-            }
-        }
-         else
-        {
-             Debug.LogWarning("Already connected or hosting.");
+        if (NetworkClient.isConnected || NetworkServer.active) {
+            Debug.LogWarning("Already connected or hosting.");
              UpdateStatus("Already Active");
+            return;
+        }
+
+        UpdateStatus("Starting Host...");
+        networkManager.StartHost();
+        Debug.Log("NetworkManager: Host Started");
+
+        if (networkDiscovery != null)
+        {
+             networkDiscovery.StopDiscovery(); // Garante que não está procurando
+            networkDiscovery.AdvertiseServer();
+            UpdateStatus("Hosting & Advertising...");
+            Debug.Log("NetworkDiscovery: Advertising Server");
+        } else {
+             UpdateStatus("Hosting (Discovery OFF)");
         }
     }
 
-    // Renomeie o botão na UI para "Find Game" ou "Join Game"
-    public void FindGamesButton() // <<< MÉTODO RENOMEADO/REESCRITO >>>
+    public void FindGamesButton()
     {
-        if (!NetworkClient.isConnected && !NetworkServer.active)
-        {
-            UpdateStatus("Searching for games...");
-            // Limpa descobertas anteriores (se houver) e começa a procurar
-            if (networkDiscovery != null)
-            {
-                networkDiscovery.StopDiscovery(); // Para anúncios ou buscas anteriores
-                networkDiscovery.StartDiscovery();
-                Debug.Log("Started searching for servers...");
-            } else {
-                UpdateStatus("Error: Discovery Missing!");
-                 Debug.LogError("Cannot search for games, NetworkDiscovery is missing!");
-            }
-        }
-         else
-        {
+        if (NetworkClient.isConnected || NetworkServer.active) {
              Debug.LogWarning("Already connected or hosting.");
              UpdateStatus("Already Active");
+             return;
         }
+        if (networkDiscovery == null) {
+             Debug.LogError("Cannot search: NetworkDiscovery not available.");
+             UpdateStatus("Error: Discovery Missing!");
+             return;
+        }
+
+
+        UpdateStatus("Searching for games...");
+        networkDiscovery.StopDiscovery(); // Para anúncios ou buscas anteriores
+        networkDiscovery.StartDiscovery();
+        Debug.Log("NetworkDiscovery: Started searching...");
     }
 
     public void StopConnectionButton()
     {
          bool stoppedSomething = false;
-        UpdateStatus("Stopping...");
+        UpdateStatus("Stopping Connection...");
 
-        // Parar Host
-        if (NetworkServer.active && NetworkClient.isConnected)
-        {
+        // Para o NetworkDiscovery primeiro, se estiver ativo
+        if (networkDiscovery != null ) {
+            networkDiscovery.StopDiscovery();
+            Debug.Log("NetworkDiscovery: Stopped");
+        }
+
+        // Para o NetworkManager
+        if (NetworkServer.active && NetworkClient.isConnected) { // Era Host
             networkManager.StopHost();
-             // >>> NOVO: Para de anunciar <<<
-             if (networkDiscovery != null) networkDiscovery.StopDiscovery();
-            Debug.Log("Host Stopped");
+            Debug.Log("NetworkManager: Host Stopped");
              stoppedSomething = true;
         }
-        // Parar Cliente
-        else if (NetworkClient.isConnected)
-        {
+        else if (NetworkClient.isConnected) { // Era só Cliente
             networkManager.StopClient();
-            // >>> NOVO: Para de procurar <<<
-            if (networkDiscovery != null) networkDiscovery.StopDiscovery();
-            Debug.Log("Client Stopped");
+            Debug.Log("NetworkManager: Client Stopped");
              stoppedSomething = true;
         }
-        // Parar apenas Servidor (se aplicável)
-        else if (NetworkServer.active)
-        {
+        else if (NetworkServer.active) { // Era só Servidor dedicado
             networkManager.StopServer();
-             // >>> NOVO: Para de anunciar <<<
-             if (networkDiscovery != null) networkDiscovery.StopDiscovery();
-            Debug.Log("Server Stopped");
+            Debug.Log("NetworkManager: Server Stopped");
              stoppedSomething = true;
         }
-         else
-        {
-             // Se não estava ativo, apenas garante que a descoberta parou
-             if (networkDiscovery != null) networkDiscovery.StopDiscovery();
-        }
 
-         if (stoppedSomething) {
-            UpdateStatus("Disconnected");
-         } else {
-            UpdateStatus("Idle"); // Volta ao estado inicial se nada estava ativo
-         }
-    }
-
-    // --- Método de Chat (sem alterações) ---
-    public void SendChatMessageButton()
-    {
-        if (messageInput == null || string.IsNullOrWhiteSpace(messageInput.text)) return;
-
-        if (NetworkClient.localPlayer != null)
-        {
-            PlayerChat localPlayerChat = NetworkClient.localPlayer.GetComponent<PlayerChat>();
-            if (localPlayerChat != null)
-            {
-                localPlayerChat.CmdSendChatMessage(messageInput.text);
-                messageInput.text = ""; // Limpa o input field
-            }
-            else
-            {
-                Debug.LogError("Local player object does not have PlayerChat component!");
-            }
-        }
-        else
-        {
-            Debug.LogError("Cannot send message: Local player object not found.");
+        if (stoppedSomething) {
+             UpdateStatus("Disconnected");
+        } else {
+             UpdateStatus("Idle"); // Se nada estava ativo, volta para Idle
+             Debug.Log("StopConnection: Nothing was active.");
         }
     }
 
-    // --- Callback do Network Discovery ---
+    #endregion
 
-    // Este método será chamado automaticamente pelo NetworkDiscovery quando um servidor for encontrado
+    #region Network Discovery Callback
+
+    // Método chamado pelo NetworkDiscovery.OnServerFound
     private void OnDiscoveredServer(ServerResponse info)
     {
-        // Só tenta conectar se não estivermos já conectados ou tentando conectar
-        if (NetworkClient.isConnected || NetworkClient.isConnecting) return;
+        // Ignora se já estamos conectados, tentando conectar ou se somos o host
+        if (NetworkClient.isConnected || NetworkClient.isConnecting || NetworkServer.active) return;
 
-        Debug.Log($"Discovered Server: {info.EndPoint.Address}");
-        UpdateStatus($"Found: {info.EndPoint.Address}. Connecting...");
+        Debug.Log($"Discovered Server at: {info.EndPoint.Address}");
+        UpdateStatus($"Found Server. Connecting...");
 
-        // >>> IMPORTANTE: Pare a descoberta ANTES de tentar conectar <<<
+        // Para a descoberta antes de tentar conectar
         networkDiscovery.StopDiscovery();
 
-        // Define o endereço IP encontrado no NetworkManager
+        // Define o endereço e inicia o cliente
         networkManager.networkAddress = info.EndPoint.Address.ToString();
-        // Tenta conectar ao servidor encontrado
         networkManager.StartClient();
     }
 
+    #endregion
 
-    // --- Helper para UI ---
+    #region UI Helper
+
     private void UpdateStatus(string message)
     {
         if (statusText != null)
@@ -202,9 +259,14 @@ public class NetworkUI : MonoBehaviour
         }
     }
 
-     // Considere adicionar listeners para eventos do NetworkManager aqui também
-     // em Start() e removê-los em OnDestroy() para feedback mais preciso:
-     // Ex: networkManager.onClientConnect += () => UpdateStatus("Connected!");
-     // Ex: networkManager.onClientError += (conn, error) => UpdateStatus($"Error: {error}");
-     // Ex: networkManager.onClientDisconnect += () => UpdateStatus("Disconnected");
+    #endregion
+
+    #region (Optional) NetworkManager Event Handlers for Feedback
+
+    // void OnClientConnect() { UpdateStatus("Connected!"); Debug.Log("Client Connected!"); }
+    // void OnClientDisconnect() { UpdateStatus("Disconnected"); Debug.Log("Client Disconnected"); }
+    // void OnClientError(NetworkConnection conn, TransportError error, string reason) { UpdateStatus($"Client Error: {reason}"); Debug.LogError($"Client Error: {error} - {reason}"); }
+    // void OnServerError(NetworkConnection conn, TransportError error, string reason) { UpdateStatus($"Server Error: {reason}"); Debug.LogError($"Server Error: {error} - {reason}"); }
+
+    #endregion
 }
