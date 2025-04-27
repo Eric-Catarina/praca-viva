@@ -237,7 +237,7 @@ public class NetworkUI : MonoBehaviour
         if (NetworkClient.isConnected || NetworkClient.isConnecting || NetworkServer.active) return;
 
         Debug.Log($"Discovered Server at: {info.EndPoint.Address}");
-        UpdateStatus($"Found Server. Connecting...");
+        UpdateStatus($"Found Server. Connected!");
 
         // Para a descoberta antes de tentar conectar
         networkDiscovery.StopDiscovery();
