@@ -59,8 +59,7 @@ Material:
   m_Shader: {fileID: 4800000, guid: 68e6db2ebdc24f95958faec2be5558d6, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords:
-  - GLOW_ON
+  m_ValidKeywords: []
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -105,7 +104,7 @@ Material:
     - _ColorMask: 15
     - _CullMode: 0
     - _Diffuse: 0.5
-    - _FaceDilate: 0.24
+    - _FaceDilate: 0.04
     - _FaceUVSpeedX: 0
     - _FaceUVSpeedY: 0
     - _GlowInner: 0.05
@@ -116,15 +115,15 @@ Material:
     - _LightAngle: 3.1416
     - _MaskSoftnessX: 0
     - _MaskSoftnessY: 0
-    - _OutlineSoftness: 0.4
+    - _OutlineSoftness: 0.054
     - _OutlineUVSpeedX: 0
     - _OutlineUVSpeedY: 0
-    - _OutlineWidth: 0.341
+    - _OutlineWidth: 0.107
     - _PerspectiveFilter: 0.875
     - _Reflectivity: 10
-    - _ScaleRatioA: 0.71316504
-    - _ScaleRatioB: 0.47708333
-    - _ScaleRatioC: 0.47708333
+    - _ScaleRatioA: 0.8333333
+    - _ScaleRatioB: 0.64375
+    - _ScaleRatioC: 0.64375
     - _ScaleX: 1
     - _ScaleY: 1
     - _ShaderFlags: 0
@@ -167,11 +166,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 71c1514a6bd24e1e882cebbe1904ce04, type: 3}
-  m_Name: CalSans-Regular SDF
+  m_Name: CalSansBasic
   m_EditorClassIdentifier: 
-  hashCode: -1111892569
+  hashCode: -223075877
   material: {fileID: -977758787252788662}
-  materialHashCode: 696850983
+  materialHashCode: -1584174053
   m_Version: 1.1.0
   m_SourceFontFileGUID: 63afafd0ee0df55a58ac523b174d3ef7
   m_SourceFontFile_EditorRef: {fileID: 12800000, guid: 63afafd0ee0df55a58ac523b174d3ef7,
