@@ -35,6 +35,8 @@ public class PlayerMovement2D : NetworkBehaviour
             Debug.LogWarning("Rigidbody2D BodyType is not Kinematic.", this);
             rb.gravityScale = 0;
         }
+        
+        transform.position = Vector3.zero;
 
         // Tenta encontrar o Joystick automaticamente se não for atribuído
         // Isso só funciona se houver apenas UM Joystick ativo na cena.
@@ -67,6 +69,7 @@ public class PlayerMovement2D : NetworkBehaviour
         // Verifica se o joystick virtual está atribuído E está sendo usado
         if (virtualJoystick != null && virtualJoystick.Direction.magnitude > virtualJoystick.DeadZone)
         {
+        Debug.Log("Joystick: " + virtualJoystick.Direction);
             // Prioriza o input do joystick virtual se ele estiver ativo
             currentMoveInput = virtualJoystick.Direction;
         }
