@@ -120,6 +120,7 @@ public class PlayerMovement2D : NetworkBehaviour
         // Se colidiu com um item de lixo válido
         if (trashItem != null)
         {
+            Debug.Log("Colidiu com um item de lixo.");
              // Opcional: Verifica se o item já foi "coletado" no lado do cliente (se usar isCollected)
              // if (trashItem.isCollected) return;
 

@@ -48,7 +48,7 @@ public class GameManager : NetworkBehaviour
 
     [Header("Difficulty Settings")]
     public List<float> difficultyTimes = new List<float> { 120f, 90f, 60f };
-    public List<int> difficultyTrashCounts = new List<int> { 10, 20, 30 };
+    public List<int> difficultyTrashCounts = new List<int> { 1, 2, 3 };
     public List<List<TrashType>> difficultyTrashTypes = new List<List<TrashType>>
     {
         new List<TrashType> { TrashType.Paper }, // Fácil: Só Papel

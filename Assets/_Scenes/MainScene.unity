@@ -2212,10 +2212,10 @@ MonoBehaviour:
   difficultyTrashCounts: 0a000000140000001e000000
   trashItemPrefab: {fileID: 3229956368108559629, guid: 6004b041ff6c5a9e2880179c50733958,
     type: 3}
-  spawnAreaMinX: -10
-  spawnAreaMaxX: 10
-  spawnAreaMinY: -3
-  spawnAreaMaxY: 3
+  spawnAreaMinX: -20
+  spawnAreaMaxX: 20
+  spawnAreaMinY: -10
+  spawnAreaMaxY: 10
   trashTypeColors:
   - {r: 0.47723532, g: 0.7334056, b: 0.76142853, a: 0}
   - {r: 1, g: 0, b: 0, a: 0}
@@ -2438,7 +2438,7 @@ Canvas:
   m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
-  m_SortingOrder: 1
+  m_SortingOrder: 0
   m_TargetDisplay: 0
 --- !u!224 &1592875624
 RectTransform:
@@ -2452,10 +2452,10 @@ RectTransform:
   m_LocalScale: {x: 0, y: 0, z: 0}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 1043513321}
   - {fileID: 949775820}
   - {fileID: 183037186}
   - {fileID: 536805676}
-  - {fileID: 1043513321}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
