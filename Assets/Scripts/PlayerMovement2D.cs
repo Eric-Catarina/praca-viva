@@ -19,6 +19,9 @@ public class PlayerMovement2D : NetworkBehaviour
     [Header("References")]
     [Tooltip("Arraste o GameObject do Joystick Virtual da sua UI aqui")]
     [SerializeField] private Joystick virtualJoystick;
+    
+    [SerializeField]
+    private PlayerVisualAnimations playerVisualAnimations;
 
     // Referências a componentes
     private Rigidbody2D rb;
@@ -52,7 +55,7 @@ public class PlayerMovement2D : NetworkBehaviour
         // Inicializa os buffers de hit
         hitBuffer = new RaycastHit2D[maxCollisions];
         hitBufferList = new RaycastHit2D[maxCollisions];
-
+        
 
         // --- Tenta encontrar o Joystick ---
         if (virtualJoystick == null)
@@ -126,6 +129,12 @@ public class PlayerMovement2D : NetworkBehaviour
 
             // Agora que ajustamos o moveDelta para respeitar colisões, aplicamos o movimento
             rb.MovePosition(rb.position + moveDelta);
+            playerVisualAnimations.StartMoveAnimation();
+
+        }
+        else
+        {
+            playerVisualAnimations.StopMoveAnimation();
         }
         // -----------------------------------------------------------
 
