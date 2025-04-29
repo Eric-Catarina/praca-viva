@@ -1,8 +1,12 @@
 using UnityEngine;
 using DG.Tweening;
 
-public class PlayerVisualAnimations : MonoBehaviour
+public class PlayerVisualAnimation : MonoBehaviour // Este script agora está no GameObject PAI (PlayerPrefab)
 {
+    [Header("Animated Visual")]
+    [Tooltip("Arraste o GameObject filho que tem o SpriteRenderer e será animado")]
+    public Transform visualTransform; // Referência ao GO filho
+
     [Header("Vertical Bounce")]
     public float bounceHeight = 0.1f; // Altura do balanço vertical
     public float verticalBounceDuration = 0.3f; // Duração de um bounce vertical (ida e volta)
@@ -20,118 +24,92 @@ public class PlayerVisualAnimations : MonoBehaviour
 
 
     private Sequence moveAnimationSequence;
-    private Vector3 originalLocalPosition; // Posição local original do sprite (ou GameObject com o script)
-    private Quaternion originalLocalRotation; // Rotação local original
+    private Vector3 originalLocalPosition; // Posição local original do visualTransform
+    private Quaternion originalLocalRotation; // Rotação local original do visualTransform
 
     void Awake()
     {
-         // Armazena a posição e rotação local original
-        originalLocalPosition = transform.localPosition;
-        originalLocalRotation = transform.localRotation;
+         if (visualTransform == null)
+         {
+             Debug.LogError("PlayerVisualAnimation: visualTransform reference is not set! Cannot animate.");
+             enabled = false; // Desabilita o script se a referência essencial faltar
+             return;
+         }
 
+         // Armazena a posição e rotação local original do GO filho
+        originalLocalPosition = visualTransform.localPosition;
+        originalLocalRotation = visualTransform.localRotation;
 
-        // Cria a sequência de animação combinada e repetitiva
+        // --- Cria a sequência de animação ---
         moveAnimationSequence = DOTween.Sequence();
 
-        // --- Adiciona Animação de Balanço Vertical ---
-        // Move para cima e volta para a posição original Y
-        moveAnimationSequence.Append(
-            transform.DOLocalMoveY(originalLocalPosition.y + bounceHeight, verticalBounceDuration / 2)
-                .SetEase(verticalBounceEase)
-        );
-        moveAnimationSequence.Append(
-            transform.DOLocalMoveY(originalLocalPosition.y, verticalBounceDuration / 2)
-                .SetEase(verticalBounceEase)
-        );
-
-
-        // --- Adiciona Animação de Balanço Horizontal (Sway) ---
-        // Insere os tweens de balanço horizontal em paralelo com os tweens verticais
-        // para que aconteçam simultaneamente.
-        // A sequência de append/join é um pouco mais complexa quando se mistura
-        // append (serial) com join (paralelo).
-        // Uma forma é criar tweens separados e adicioná-los à sequência principal.
-
-        // Tween 1 do Sway: Mover para um lado
-        Tween swayRight = transform.DOLocalMoveX(originalLocalPosition.x + swayAmount, horizontalSwayDuration / 2).SetEase(horizontalSwayEase);
-        // Tween 2 do Sway: Mover de volta para o centro
-        Tween swayLeftAndBack = transform.DOLocalMoveX(originalLocalPosition.x - swayAmount, horizontalSwayDuration).SetEase(horizontalSwayEase); // Vai para o outro lado e volta
-
-        // A forma mais simples de adicionar algo em paralelo em uma sequência serial
-        // que já está definida é usar Insert. Vamos recriar a sequência de forma mais clara.
-
-        // Vamos construir a sequência para ter um ciclo completo de movimento (vertical + lateral + rotação) e depois repetir esse ciclo.
-        moveAnimationSequence = DOTween.Sequence();
-
-        // Ciclo de movimento completo (ida e volta)
+        // Ciclo de movimento completo (ida e volta para as posições originais)
 
         // 1. Mover para Cima + Lado Direito + Girar para um lado
-        moveAnimationSequence.Append(transform.DOLocalMoveY(originalLocalPosition.y + bounceHeight, verticalBounceDuration / 2).SetEase(verticalBounceEase));
-        moveAnimationSequence.Join(transform.DOLocalMoveX(originalLocalPosition.x + swayAmount, horizontalSwayDuration / 2).SetEase(horizontalSwayEase));
-        moveAnimationSequence.Join(transform.DOLocalRotate(originalLocalRotation.eulerAngles + new Vector3(0, 0, wobbleAngle), wobbleDuration / 2).SetEase(wobbleEase));
+        moveAnimationSequence.Append(visualTransform.DOLocalMoveY(originalLocalPosition.y + bounceHeight, verticalBounceDuration / 2).SetEase(verticalBounceEase));
+        moveAnimationSequence.Join(visualTransform.DOLocalMoveX(originalLocalPosition.x + swayAmount, horizontalSwayDuration / 2).SetEase(horizontalSwayEase));
+        moveAnimationSequence.Join(visualTransform.DOLocalRotate(originalLocalRotation.eulerAngles + new Vector3(0, 0, wobbleAngle), wobbleDuration / 2).SetEase(wobbleEase));
 
+        // Vamos assumir que a duração total de um ciclo completo (ida e volta) é a mesma para todos os tipos de animação
+        // Se suas durações (verticalBounceDuration, etc.) são diferentes, você precisa ajustar a lógica da sequência.
+        // Para simplificar, vamos usar apenas verticalBounceDuration / 2 para cada metade do ciclo.
+        // Se precisar de mais controle, pode usar SetDuration() nos tweens individuais.
+        float halfCycleDuration = verticalBounceDuration / 2; // Ou a duração que preferir para a metade do ciclo
 
-        // 2. Mover para Baixo + Lado Esquerdo + Girar para o outro lado
-        moveAnimationSequence.Append(transform.DOLocalMoveY(originalLocalPosition.y, verticalBounceDuration / 2).SetEase(verticalBounceEase)); // Volta para posição original Y
-        moveAnimationSequence.Join(transform.DOLocalMoveX(originalLocalPosition.x - swayAmount, horizontalSwayDuration / 2).SetEase(horizontalSwayEase));
-        moveAnimationSequence.Join(transform.DOLocalRotate(originalLocalRotation.eulerAngles - new Vector3(0, 0, wobbleAngle), wobbleDuration / 2).SetEase(wobbleEase));
+        moveAnimationSequence = DOTween.Sequence(); // Recria a sequência
 
-        // 3. Voltar para o centro X e Rotação Original (Pode ser feito junto com o passo 2 ou separado)
-        // Vamos ajustar o passo 2 para ir para baixo E voltar para o centro X/Rotação
-         moveAnimationSequence = DOTween.Sequence();
+         // Parte 1 do Ciclo (ex: Perna para cima, para a direita, girar um pouco)
+        moveAnimationSequence.Append(visualTransform.DOLocalMoveY(originalLocalPosition.y + bounceHeight, halfCycleDuration).SetEase(verticalBounceEase));
+        moveAnimationSequence.Join(visualTransform.DOLocalMoveX(originalLocalPosition.x + swayAmount, halfCycleDuration).SetEase(horizontalSwayEase));
+        moveAnimationSequence.Join(visualTransform.DOLocalRotate(originalLocalRotation.eulerAngles + new Vector3(0, 0, wobbleAngle), halfCycleDuration).SetEase(wobbleEase));
 
-        // Ciclo de movimento completo (ida e volta)
+         // Parte 2 do Ciclo (ex: Perna para baixo, para a esquerda, voltar a girar, ou simplesmente voltar para o centro/original)
+         // Vamos voltar para a posição/rotação original.
+         moveAnimationSequence.Append(visualTransform.DOLocalMoveY(originalLocalPosition.y, halfCycleDuration).SetEase(verticalBounceEase));
+         moveAnimationSequence.Join(visualTransform.DOLocalMoveX(originalLocalPosition.x, halfCycleDuration).SetEase(horizontalSwayEase));
+         moveAnimationSequence.Join(visualTransform.DOLocalRotate(originalLocalRotation.eulerAngles, halfCycleDuration).SetEase(wobbleEase));
 
-        // 1. Mover para Cima + Lado Direito + Girar para um lado
-        moveAnimationSequence.Append(transform.DOLocalMoveY(originalLocalPosition.y + bounceHeight, verticalBounceDuration / 2).SetEase(verticalBounceEase));
-        moveAnimationSequence.Join(transform.DOLocalMoveX(originalLocalPosition.x + swayAmount, horizontalSwayDuration / 2).SetEase(horizontalSwayEase));
-        moveAnimationSequence.Join(transform.DOLocalRotate(originalLocalRotation.eulerAngles + new Vector3(0, 0, wobbleAngle), wobbleDuration / 2).SetEase(wobbleEase));
-
-        // 2. Mover para Baixo E para o Centro (Y, X, Rotação)
-        // A duração total de um ciclo é bounceDuration ou swayDuration ou wobbleDuration, se forem iguais
-        // Vamos supor que todas as durações *de ida e volta* são as mesmas para simplificar o loop
-        float fullCycleDuration = verticalBounceDuration; // Ou swayDuration, ou wobbleDuration, se forem iguais
-
-        moveAnimationSequence.Append(transform.DOLocalMoveY(originalLocalPosition.y, fullCycleDuration / 2).SetEase(verticalBounceEase));
-        moveAnimationSequence.Join(transform.DOLocalMoveX(originalLocalPosition.x, fullCycleDuration / 2).SetEase(horizontalSwayEase)); // Volta para posição original X
-        moveAnimationSequence.Join(transform.DOLocalRotate(originalLocalRotation.eulerAngles, fullCycleDuration / 2).SetEase(wobbleEase)); // Volta para rotação original Z
 
         // Configura para loop infinito e começa pausada
-        moveAnimationSequence.SetLoops(-1, LoopType.Restart)
-            .SetAutoKill(false)
-            .Pause();
+        moveAnimationSequence.SetLoops(-1, LoopType.Restart) // Loop infinito
+            .SetAutoKill(false) // Não se mata ao terminar um ciclo
+            .Pause(); // Começa pausada
 
-        // Garante que a posição local e rotação inicial são as armazenadas
-        transform.localPosition = originalLocalPosition;
-        transform.localRotation = originalLocalRotation;
+        // Garante que o visualTransform começa na posição e rotação original
+        visualTransform.localPosition = originalLocalPosition;
+        visualTransform.localRotation = originalLocalRotation;
     }
 
-    // Chame este método do seu script de movimento (PlayerMovement2D)
-    // quando o jogador começar a se mover
+    // Chamado pelo PlayerMovement2D no hook da SyncVar
     public void StartMoveAnimation()
     {
         if (!moveAnimationSequence.IsPlaying())
         {
+            // Reseta para a posição original antes de começar (para evitar transições bruscas)
+            visualTransform.localPosition = originalLocalPosition;
+            visualTransform.localRotation = originalLocalRotation;
             moveAnimationSequence.Play();
         }
     }
 
-    // Chame este método do seu script de movimento (PlayerMovement2D)
-    // quando o jogador parar
+    // Chamado pelo PlayerMovement2D no hook da SyncVar
     public void StopMoveAnimation()
     {
          if (moveAnimationSequence.IsPlaying())
         {
             moveAnimationSequence.Pause();
-            // Opcional: Retornar o sprite à posição e rotação original suavemente
-             transform.DOLocalMove(originalLocalPosition, 0.1f).SetEase(Ease.OutQuad);
-             transform.DOLocalRotate(originalLocalRotation.eulerAngles, 0.1f).SetEase(Ease.OutQuad);
+            // Anima suavemente de volta para a posição e rotação original
+             visualTransform.DOLocalMove(originalLocalPosition, 0.2f).SetEase(Ease.OutQuad);
+             visualTransform.DOLocalRotate(originalLocalRotation.eulerAngles, 0.2f).SetEase(Ease.OutQuad);
         }
     }
 
     void OnDestroy()
     {
         // Garante que a sequência é morta para evitar vazamento de memória
-        moveAnimationSequence.Kill();
+        if (moveAnimationSequence != null)
+        {
+            moveAnimationSequence.Kill();
+        }
     }
 }

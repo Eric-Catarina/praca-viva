@@ -16,6 +16,7 @@ GameObject:
   - component: {fileID: 4947922802535327308}
   - component: {fileID: -6916262786953497840}
   - component: {fileID: 3819083247613332786}
+  - component: {fileID: 6078604319155824954}
   m_Layer: 6
   m_Name: PlayerPrefab
   m_TagString: Untagged
@@ -180,8 +181,6 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   moveSpeed: 5
-  maxCollisions: 10
-  collisionSkin: 0.05
   virtualJoystick: {fileID: 0}
 --- !u!58 &3819083247613332786
 CircleCollider2D:
@@ -218,6 +217,28 @@ CircleCollider2D:
   m_Offset: {x: 0, y: 0}
   serializedVersion: 2
   m_Radius: 2
+--- !u!114 &6078604319155824954
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4425289386129145931}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a888f67ce646c37eba30d8bd2f26412b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  visualTransform: {fileID: 8884496076660095622}
+  bounceHeight: 0.1
+  verticalBounceDuration: 0.3
+  verticalBounceEase: 4
+  swayAmount: 0.05
+  horizontalSwayDuration: 0.3
+  horizontalSwayEase: 4
+  wobbleAngle: 5
+  wobbleDuration: 0.3
+  wobbleEase: 4
 --- !u!1 &7517870660990801319
 GameObject:
   m_ObjectHideFlags: 0
@@ -228,7 +249,6 @@ GameObject:
   m_Component:
   - component: {fileID: 8884496076660095622}
   - component: {fileID: 6435524331298162670}
-  - component: {fileID: 1869399554333840805}
   m_Layer: 0
   m_Name: GameObject
   m_TagString: Untagged
@@ -303,24 +323,3 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_MaskInteraction: 0
   m_SpriteSortPoint: 0
---- !u!114 &1869399554333840805
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7517870660990801319}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a888f67ce646c37eba30d8bd2f26412b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  bounceHeight: 0.5
-  verticalBounceDuration: 0.3
-  verticalBounceEase: 4
-  swayAmount: 0.05
-  horizontalSwayDuration: 0.3
-  horizontalSwayEase: 4
-  wobbleAngle: 1
-  wobbleDuration: 0.3
-  wobbleEase: 4
