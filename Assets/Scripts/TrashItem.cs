@@ -1,51 +1,73 @@
 using UnityEngine;
 using Mirror;
 using DG.Tweening;
-using System.Collections.Generic;
 
-// A enumeração TrashType DEVE estar definida em outro arquivo (ex: Utilities.cs)
-// using SeuProjeto.Enums;
+// A enum TrashType NÃO é mais necessária neste script.
 
 public class TrashItem : NetworkBehaviour
 {
-    [SyncVar]
-    public TrashType type = TrashType.None;
+    // [SyncVar] TrashType type; // REMOVIDO - Lixo não tem mais tipo sincronizado
 
+    // Referência ao Sprite Renderer
     private SpriteRenderer spriteRenderer;
+    // Referência ao Collider 2D
     private Collider2D itemCollider;
-    private TrashVisualAnimation visualAnimation;
+
+    // Referência ao script de animação visual (flutuação/rotação)
+    private TrashVisualAnimation visualAnimation; // Ainda útil para a animação de flutuação
 
     [Header("Collection Animation")]
     public float collectionDuration = 0.3f;
     public Ease collectionEase = Ease.InBack;
 
-    // ... (outras variáveis e Awake/OnStartClient/UpdateVisualBasedOnType) ...
+
+    void Awake()
+    {
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        itemCollider = GetComponent<Collider2D>();
+        visualAnimation = GetComponent<TrashVisualAnimation>();
+        if (visualAnimation == null) Debug.LogWarning("TrashVisualAnimation script not found on TrashItem prefab!");
+    }
+
+    // Chamado em todos os clientes depois que o objeto é spawnado e SyncVars foram inicializadas
+    // Se o GameManager define o sprite no servidor ANTES de spawnar,
+    // essa configuração visual já deve sincronizar com o NetworkIdentity.
+    // Este método pode ser usado para verificar ou adicionar efeitos locais pós-spawn.
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+        // Debug.Log($"TrashItem spawned on client. NetId: {netId}");
+
+        // Não precisa mais de UpdateVisualBasedOnType() lendo SyncVar type
+    }
 
 
+    // --- ClientRpc para Disparar a Animação de Coleta ---
     [ClientRpc]
     public void RpcAnimateCollection()
     {
-        Debug.Log($"Client: Animating collection for {type} trash item (NetId: {netId}).");
+        // Este RPC é chamado no cliente POUCO ANTES do objeto ser destruído pelo servidor.
+        Debug.Log($"Client: Animating collection for trash item (NetId: {netId}).");
 
+        // --- Desabilita Colisão e Pede para Parar a Animação de Flutuação ---
         if (itemCollider != null) itemCollider.enabled = false;
-
         if (visualAnimation != null)
         {
              visualAnimation.StopMoveAnimation(); // Para a animação de flutuação/rotação
         } else {
-             // Fallback: Esconder sprite e desabilitar colisor se não tiver visualAnimation
+             // Fallback: Esconder sprite se não tiver visualAnimation
              if (spriteRenderer != null) spriteRenderer.enabled = false;
-             // Colisor já desabilitado
         }
 
 
         // --- Animação de Coleta (Escalar e Fade Out) ---
+        // Criamos e tocamos a sequência de animação localmente.
         Sequence collectionSequence = DOTween.Sequence();
 
-        // Animação de Escala
+        // Animação de Escala para zero
         collectionSequence.Append(transform.DOScale(Vector3.zero, collectionDuration).SetEase(collectionEase));
 
-        // Animação de Fade Out
+        // Animação de Fade Out do Sprite
         if (spriteRenderer != null)
         {
              Color startColor = spriteRenderer.color;
@@ -55,35 +77,8 @@ public class TrashItem : NetworkBehaviour
 
         collectionSequence.Play();
 
-        // --- NOVO: MATAR TWEENS ASSOCIADOS A ESTE OBJETO APÓS A ANIMAÇÃO DE COLETA ---
-        // Matar todos os tweens que afetam este Transform ou este objeto.
-        // Usamos OnComplete para matar *depois* que a animação de coleta termina,
-        // mas pode haver um pequeno risco se a destruição ocorrer ANTES do OnComplete.
-        // A forma mais segura é MATAR *antes* de iniciar a nova animação de coleta
-        // ou garantir que a nova animação sobreescreva/substitua as antigas.
-
-        // A melhor abordagem é garantir que a ANIMAÇÃO DE FLUTUAÇÃO/ROTAÇÃO (que roda em loop infinito)
-        // seja morta explicitamente quando a animação de coleta é disparada.
-        // Já estamos chamando visualAnimation.StopMoveAnimation(); isso DEVERIA matar a sequência.
-        // Se o erro persiste, talvez o tween de *coleta* em si (collectionSequence) esteja causando o problema
-        // se ele tentar continuar animando no frame em que o objeto é destruído.
-
-        // Uma forma mais agressiva: Mate TODOS os tweens associados a este GameObject *antes* de começar a animação de coleta.
-        // DOTween.Kill(this.transform, true); // true = include children
-        // DOTween.Kill(this.gameObject, true); // Também mata tweens no GameObject principal e filhos
-
-        // >>> Vamos tentar matar a sequência de coleta APÓS o play, se ela causar o problema <<<
-        // Isso é menos provável, mas se o erro apontar para o tween de coleta, pode ser necessário.
-        collectionSequence.OnComplete(() => {
-            // Isso pode ser arriscado se o objeto for destruído antes do OnComplete rodar
-            // DOTween.Kill(collectionSequence);
-        });
-        // -----------------------------------------------------------------------------
-
-        // A chamada visualAnimation.StopMoveAnimation() é o lugar mais provável para matar a animação em LOOP.
-        // Se o erro ainda ocorrer, o problema está no timing entre NetworkServer.Destroy e a execução local do Rpc e Tweens.
-
-        // O OBJETO SERÁ DESTRUÍDO PELO SERVIDOR LOGO APÓS ESTE RPC TERMINAR EM TODOS OS CLIENTES.
+        // Não precisamos de OnComplete, o objeto será destruído pelo servidor.
+        // A sequência de animação será morta no OnDestroy deste objeto pelo DOTween automaticamente,
+        // ou explicitamente pelo OnDestroy do TrashVisualAnimation se ele matar todas as sequências.
     }
-    // ... (Resto do script) ...
 }
