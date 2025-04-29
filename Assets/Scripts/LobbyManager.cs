@@ -13,7 +13,7 @@ public class LobbyManager : MonoBehaviour
     [Tooltip("Texto para mostrar a dificuldade selecionada")]
     public TextMeshProUGUI selectedDifficultyText; // Opcional
 
-    private int currentSelectedDifficulty = 0; // 0 = Fácil, 1 = Médio, 2 = Difícil
+    public int currentSelectedDifficulty = 0; // 0 = Fácil, 1 = Médio, 2 = Difícil
 
     // O NetworkManager.singleton já é acessível globalmente.
     // [SerializeField] private NetworkManager networkManager; // Não é estritamente necessário

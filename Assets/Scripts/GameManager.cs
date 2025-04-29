@@ -2,13 +2,10 @@ using UnityEngine;
 using Mirror;
 using System.Collections.Generic;
 using System.Collections;
-using Random = UnityEngine.Random; // Para evitar conflito com System.Random
-
-// A enum TrashType NÃO é mais necessária neste script.
+using Random = UnityEngine.Random;
 
 public class GameManager : NetworkBehaviour
 {
-    // --- Singleton ---
     public static GameManager Instance;
 
     void Awake()
@@ -19,19 +16,18 @@ public class GameManager : NetworkBehaviour
         }
         else if (Instance != this)
         {
-             if (isClientOnly) { Debug.LogWarning("GameManager: Another instance found on client. Using the one from the server."); }
+            Debug.LogWarning($"Duplicate GameManager found on {gameObject.name}. Destroying this instance.");
+            Destroy(gameObject);
         }
     }
 
-     void OnDestroy()
+    void OnDestroy()
     {
-         if (Instance == this)
-         {
-             Instance = null;
-         }
+        if (Instance == this)
+        {
+            Instance = null;
+        }
     }
-    // -------------------------------------------------------
-
 
     [Header("Game Settings")]
     [SyncVar(hook = nameof(OnTimeChanged))]
@@ -43,67 +39,71 @@ public class GameManager : NetworkBehaviour
     [SyncVar(hook = nameof(OnCollectedTrashChanged))]
     public int collectedTrashCount = 0;
 
+    [SyncVar(hook = nameof(OnGameTotalDurationChanged))]
+    public float gameTotalDuration = 60f;
+
     [Header("Difficulty Settings")]
+    [Tooltip("Tempo limite para cada dificuldade (Índice 0=Fácil, 1=Médio, 2=Difícil)")]
     public List<float> difficultyTimes = new List<float> { 120f, 90f, 60f };
+    [Tooltip("Número total de itens de lixo para cada dificuldade")]
     public List<int> difficultyTrashCounts = new List<int> { 10, 20, 30 };
-    // REMOVIDO: public List<List<TrashType>> difficultyTrashTypes;
 
-     [Header("Trash Spawning")]
-    [Tooltip("O Prefab do item de lixo (deve ter TrashItem script e SpriteRenderer)")]
-    public GameObject trashItemPrefab; // Um único prefab agora
+    [Header("Trash Spawning")]
+    [Tooltip("O Prefab do item de lixo (deve ter TrashItem script, SpriteRenderer, NetworkIdentity)")]
+    public GameObject trashItemPrefab;
+    [Tooltip("Lista de Sprites para usar aleatoriamente no lixo spawnado (Usada no Servidor para escolher o índice)")]
+    public List<Sprite> trashSpritesServer;
 
-     [Tooltip("Lista de Sprites para usar aleatoriamente no lixo spawnado")]
-     public List<Sprite> trashSprites; // <<< NOVA LISTA DE SPRITES ALEATÓRIOS
-
-     [Header("Random Spawn Area")]
+    [Header("Random Spawn Area")]
     public float spawnAreaMinX = -10f;
     public float spawnAreaMaxX = 10f;
     public float spawnAreaMinY = -3f;
     public float spawnAreaMaxY = 3f;
 
-     // REMOVIDO: [Header("Trash Type Colors")] public List<Color> trashTypeColors;
-
-     // --- Game State (Servidor) ---
     private bool gameStarted = false;
     private bool gameEnded = false;
-    private int currentDifficultyIndex = 0; // Definido antes de StartHost
+    private int currentDifficultyIndex = 0;
 
-    // --- Sincroniza o início da partida ---
     [ClientRpc]
     void RpcStartGame()
     {
-         Debug.Log("Game Started RPC received on client.");
-         // Ativar UI do jogo, esconder lobby, etc.
-         // FindObjectOfType<GameUI>()?.ShowGameUI();
+        Debug.Log("GameManager Client: RpcStartGame received.");
     }
 
-    // --- Chamado no SERVIDOR quando o Host inicia ---
     public override void OnStartServer()
     {
         base.OnStartServer();
         Debug.Log("GameManager Server Started.");
 
-        StartCoroutine(StartGameWithDelay(1.0f));
+        LobbyManager lobby = FindObjectOfType<LobbyManager>();
+        int selectedDifficultyIndex = 0;
+
+        if (lobby != null)
+        {
+            selectedDifficultyIndex = lobby.currentSelectedDifficulty;
+            Debug.Log($"GameManager Server: Reading difficulty index {selectedDifficultyIndex} from LobbyManager.");
+        } else {
+             Debug.LogWarning("GameManager Server: LobbyManager not found! Using default difficulty index 0.");
+        }
+
+        ConfigureAndStartGame(selectedDifficultyIndex);
     }
 
-     IEnumerator StartGameWithDelay(float delay)
+    [Server]
+    void ConfigureAndStartGame(int difficultyIndex)
     {
-        yield return new WaitForSeconds(delay);
-         if (!isServer) yield break;
+        if (!isServer) return;
 
-         Debug.Log($"Starting Game - Difficulty: {currentDifficultyIndex}");
+        Debug.Log($"GameManager Server: Configuring game for difficulty index {difficultyIndex}.");
 
-        if (currentDifficultyIndex >= 0 && currentDifficultyIndex < difficultyTimes.Count &&
-            currentDifficultyIndex < difficultyTrashCounts.Count) // Verificação simplificada
+        if (difficultyIndex >= 0 && difficultyIndex < difficultyTimes.Count &&
+            difficultyIndex < difficultyTrashCounts.Count)
         {
-            remainingTime = difficultyTimes[currentDifficultyIndex];
-            totalTrashCount = difficultyTrashCounts[currentDifficultyIndex];
-            // REMOVIDO: List<TrashType> typesToSpawn; // Não precisa mais de tipos específicos
+            gameTotalDuration = difficultyTimes[difficultyIndex];
+            remainingTime = gameTotalDuration;
+            totalTrashCount = difficultyTrashCounts[difficultyIndex];
 
-            // --- Spawning do Lixo ---
-            SpawnTrashItems(totalTrashCount,
-                            spawnAreaMinX, spawnAreaMaxX,
-                            spawnAreaMinY, spawnAreaMaxY); // Não passa mais lista de tipos
+            SpawnTrashItems(totalTrashCount, spawnAreaMinX, spawnAreaMaxX, spawnAreaMinY, spawnAreaMaxY);
 
             collectedTrashCount = 0;
             gameStarted = true;
@@ -111,108 +111,74 @@ public class GameManager : NetworkBehaviour
 
             RpcStartGame();
         }
-         else
+        else
         {
-             Debug.LogError($"Invalid difficulty index ({currentDifficultyIndex}) or difficulty settings incomplete!");
+             Debug.LogError($"GameManager Server: Invalid difficulty index {difficultyIndex}! Cannot configure game.");
         }
     }
 
-
-    // --- Lógica de Spawning (Servidor) ---
-    // Não recebe mais lista de tipos
-    void SpawnTrashItems(int count,
-                         float minX, float maxX, float minY, float maxY)
+    [Server]
+    void SpawnTrashItems(int count, float minX, float maxX, float minY, float maxY)
     {
-        if (trashItemPrefab == null)
+        if (trashItemPrefab == null) { Debug.LogError("GameManager: TrashItemPrefab is not assigned!"); return; }
+        if (trashSpritesServer == null || trashSpritesServer.Count == 0)
         {
-             Debug.LogError("TrashItemPrefab is not assigned in GameManager!");
+             Debug.LogError("GameManager: Trash Sprites Server list is empty or null!");
              return;
         }
-        // Verificação para a lista de sprites
-         if (trashSprites == null || trashSprites.Count == 0)
-        {
-             Debug.LogError("Trash Sprites list is empty or null in GameManager!");
-             return;
-        }
-         if (count > (maxX - minX) * (maxY - minY)) // Verificação simples se a área é grande o suficiente para a quantidade
-         {
-             Debug.LogWarning("Spawn area may be too small for the number of trash items.");
-         }
+        Debug.Log($"GameManager Server: Spawning {count} trash items...");
 
+         if (count > (maxX - minX) * (maxY - minY) * 2)
+         {
+             Debug.LogWarning($"GameManager: Spawn area ({maxX-minX}x{maxY-minY}) might be crowded for {count} items.");
+         }
 
         for (int i = 0; i < count; i++)
         {
-            // REMOVIDO: TrashType randomType; // Não precisa mais de tipo aleatório
-
-            // --- Gera Posição Aleatória ---
             Vector3 spawnPos = new Vector3(Random.Range(minX, maxX), Random.Range(minY, maxY), 0f);
-            // -----------------------------
 
             GameObject trashGO = Instantiate(trashItemPrefab, spawnPos, Quaternion.identity);
             TrashItem trashItem = trashGO.GetComponent<TrashItem>();
-            SpriteRenderer trashRenderer = trashGO.GetComponent<SpriteRenderer>();
 
              if (trashItem != null)
              {
-                  // REMOVIDO: trashItem.type = randomType; // Não precisa definir tipo
-             } else {
-                 Debug.LogError($"Spawned object {trashItemPrefab.name} is missing TrashItem component!");
-             }
+                 int randomSpriteIndex = Random.Range(0, trashSpritesServer.Count);
+                 trashItem.spriteIndex = randomSpriteIndex;
 
-             // --- Define o Sprite Aleatório no Servidor ANTES de Spawnar ---
-             if (trashRenderer != null)
-             {
-                 int randomSpriteIndex = Random.Range(0, trashSprites.Count);
-                 trashRenderer.sprite = trashSprites[randomSpriteIndex];
-                 // Debug.Log($"Server: Assigned sprite {trashRenderer.sprite.name} to new trash item.");
-             } else {
-                  Debug.LogWarning("TrashItem prefab is missing SpriteRenderer component!");
-             }
-             // ------------------------------------------------------------
+             } else { Debug.LogError($"GameManager: Spawned object {trashItemPrefab.name} is missing TrashItem component!"); }
 
-
-            NetworkServer.Spawn(trashGO); // Spawna o objeto na rede
-            // Debug.Log($"Spawned trash at {spawnPos}");
+            NetworkServer.Spawn(trashGO);
         }
+         Debug.Log($"GameManager Server: Finished spawning {count} trash items.");
     }
 
-
-    // --- Game Loop (Servidor) ---
     void Update()
     {
-        if (!isServer || gameEnded || !gameStarted)
-        {
-            return;
-        }
+        if (!isServer || gameEnded || !gameStarted) return;
 
         remainingTime -= Time.deltaTime;
 
         if (remainingTime <= 0)
         {
             remainingTime = 0;
-            EndGame(false); // Derrota
-        }
-        else if (collectedTrashCount >= totalTrashCount && totalTrashCount > 0)
-        {
-            EndGame(true); // Vitória
+            EndGame(false);
         }
     }
-
-    // --- Métodos Chamados por Outros Scripts (Servidor) ---
 
     [Server]
     public void IncrementCollectedCount()
     {
-        collectedTrashCount++;
-        Debug.Log($"Server: Trash Collected! Count: {collectedTrashCount}/{totalTrashCount}");
+        if (gameEnded || !gameStarted) return;
 
-         if (collectedTrashCount >= totalTrashCount && totalTrashCount > 0 && !gameEnded)
+        collectedTrashCount++;
+        Debug.Log($"GameManager Server: Trash Collected! Count: {collectedTrashCount}/{totalTrashCount}");
+
+         if (collectedTrashCount >= totalTrashCount && totalTrashCount > 0)
          {
              EndGame(true);
          }
     }
 
-    // --- Fim do Jogo (Servidor) ---
     [Server]
     void EndGame(bool win)
     {
@@ -220,57 +186,77 @@ public class GameManager : NetworkBehaviour
         gameEnded = true;
         gameStarted = false;
 
-        Debug.Log($"Game Ended. Result: {(win ? "Victory" : "Derrota")}");
-        RpcEndGame(win);
+        Debug.Log($"GameManager Server: Game Ended. Result: {(win ? "Victory" : "Derrota")}");
 
-        // Opcional: Parar o host/servidor após um delay
-        // StartCoroutine(StopHostAfterDelay(5.0f));
+        RpcEndGame(win);
     }
 
     [ClientRpc]
     void RpcEndGame(bool win)
     {
-        Debug.Log($"Game Ended RPC received on client. Result: {(win ? "Victory" : "Derrota")}");
-        // Mostrar tela de resultado na UI do cliente
-        // Ex: FindObjectOfType<GameUI>()?.ShowResultScreen(win);
+        Debug.Log($"GameManager Client: RpcEndGame received. Result: {(win ? "Victory" : "Derrota")}");
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.ShowResultScreen(win);
+        } else { Debug.LogWarning("GameManager Client: GameUI script not found to show result screen!"); }
     }
 
-
-    // --- Métodos Hook de SyncVar (Chamados em TODOS os clientes e no Host) ---
     void OnTimeChanged(float oldTime, float newTime)
     {
-        // Atualizar UI do Timer no cliente
-        // Ex: FindObjectOfType<GameUI>()?.UpdateTimerUI(newTime);
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.UpdateTimerUI(newTime, gameTotalDuration);
+        }
+    }
+
+    void OnGameTotalDurationChanged(float oldDur, float newDur)
+    {
+        Debug.Log($"GameManager Client: Game Total Duration updated: {newDur}");
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.UpdateTimerUI(remainingTime, newDur);
+        }
     }
 
     void OnTotalTrashChanged(int oldTotal, int newTotal)
     {
-        // Atualizar UI do Total de Lixo no cliente
-         Debug.Log($"Total Trash updated: {newTotal}"); // Log para depuração
-        // Ex: FindObjectOfType<GameUI>()?.UpdateTotalTrashUI(newTotal);
+        Debug.Log($"GameManager Client: Total Trash updated: {newTotal}");
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.UpdateCollectedTrashUI(collectedTrashCount, newTotal);
+        }
     }
 
     void OnCollectedTrashChanged(int oldCollected, int newCollected)
     {
-        // Atualizar UI da Contagem Coletada no cliente
-         Debug.Log($"Collected Trash updated: {newCollected}"); // Log para depuração
-        // Ex: FindObjectOfType<GameUI>()?.UpdateCollectedTrashUI(newCollected);
-
-        // Opcional: Tocar som ou mostrar efeito quando um lixo é coletado (no cliente)
-        // SoundManager.Instance?.PlayTrashCollectedSound();
+        Debug.Log($"GameManager Client: Collected Trash updated: {newCollected}");
+        GameUI gameUI = FindObjectOfType<GameUI>();
+        if (gameUI != null)
+        {
+            gameUI.UpdateCollectedTrashUI(newCollected, totalTrashCount);
+        }
     }
 
+    public void SetDifficultyIndex(int index)
+    {
+        if (!gameStarted && !gameEnded)
+        {
+            if (index >= 0 && index < difficultyTimes.Count)
+            {
+                currentDifficultyIndex = index;
+                Debug.Log($"GameManager: Stored difficulty index for next game: {index}");
+            } else {
+                Debug.LogWarning($"GameManager: Invalid difficulty index {index} received. Ignoring.");
+            }
+        } else { Debug.LogWarning("GameManager: Cannot change difficulty after game started."); }
+    }
 
-     // --- Método para definir a dificuldade ANTES de StartHost ---
-     public void SetDifficultyIndex(int index)
-     {
-         if (!gameStarted && !gameEnded)
-         {
-             currentDifficultyIndex = index;
-             Debug.Log($"Difficulty set to index: {index} (Applies on next game start)");
-             // Opcional: Atualizar UI de dificuldade selecionada no lobby
-         } else { Debug.LogWarning("Cannot change difficulty after game started."); }
-     }
-
-     // REMOVIDO: GetColorForTrashType pois não usamos mais cores por tipo de lixo
+    public int GetCurrentSelectedDifficulty()
+    {
+        return currentDifficultyIndex;
+    }
 }

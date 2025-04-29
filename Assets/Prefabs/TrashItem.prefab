@@ -155,7 +155,13 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0.05
-  type: 1
+  spriteIndex: 1
+  trashSpritesLocal:
+  - {fileID: 21300000, guid: 11adbf48ebe6d9088b2eaf1df853f332, type: 3}
+  - {fileID: 21300000, guid: ba84e4972a13dc211aaf02417a6296ec, type: 3}
+  - {fileID: 21300000, guid: 1d42965cffd525eb6af46bda9281d6a2, type: 3}
+  collectionDuration: 0.3
+  collectionEase: 26
 --- !u!114 &-9061073930801251082
 MonoBehaviour:
   m_ObjectHideFlags: 0

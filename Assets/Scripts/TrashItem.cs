@@ -1,44 +1,102 @@
 using UnityEngine;
 using Mirror;
 using DG.Tweening;
+using System.Collections.Generic; // Para List
 
 // A enum TrashType NÃO é mais necessária neste script.
 
+
 public class TrashItem : NetworkBehaviour
 {
-    // [SyncVar] TrashType type; // REMOVIDO - Lixo não tem mais tipo sincronizado
+    // REMOVIDO: [SyncVar] TrashType type;
+
+    // --- Sincroniza o índice do sprite escolhido no servidor ---
+    [SyncVar(hook = nameof(OnSpriteIndexChanged))]
+    public int spriteIndex = -1; // Índice na lista de sprites local do Prefab.
+    // -----------------------------------------------------------------
+
+    [Header("Visuals")]
+    [Tooltip("Lista de Sprites para usar no TrashItem (Configurar no Prefab)")]
+    public List<Sprite> trashSpritesLocal; // <<< LISTA NO PRÓPRIO PREFAB
 
     // Referência ao Sprite Renderer
     private SpriteRenderer spriteRenderer;
     // Referência ao Collider 2D
     private Collider2D itemCollider;
 
-    // Referência ao script de animação visual (flutuação/rotação)
-    private TrashVisualAnimation visualAnimation; // Ainda útil para a animação de flutuação
+    private TrashVisualAnimation visualAnimation;
 
     [Header("Collection Animation")]
     public float collectionDuration = 0.3f;
     public Ease collectionEase = Ease.InBack;
 
 
+    // Dentro de TrashItem.cs, no Awake()
     void Awake()
     {
+        // Se o SpriteRenderer está no GameObject raiz:
         spriteRenderer = GetComponent<SpriteRenderer>();
+
+        // Se o SpriteRenderer está em um GameObject FILHO chamado "Visual":
+        // Transform visualChild = transform.Find("Visual"); // Encontra o filho pelo nome
+        // if (visualChild != null) {
+        //     spriteRenderer = visualChild.GetComponent<SpriteRenderer>();
+        // } else {
+        //     Debug.LogError("TrashItem: Visual child with SpriteRenderer not found!");
+        // }
+
+        // Ou se é o primeiro/único SpriteRenderer em qualquer filho:
+        // spriteRenderer = GetComponentInChildren<SpriteRenderer>(); // Procura em filhos também
+
         itemCollider = GetComponent<Collider2D>();
-        visualAnimation = GetComponent<TrashVisualAnimation>();
-        if (visualAnimation == null) Debug.LogWarning("TrashVisualAnimation script not found on TrashItem prefab!");
+        visualAnimation = GetComponent<TrashVisualAnimation>(); // Se visualAnimation está no raiz
+        // Ou visualAnimation = GetComponentInChildren<TrashVisualAnimation>(); // Se visualAnimation está no filho
+
+        // Adicionar uma verificação
+        if (spriteRenderer == null) Debug.LogError("TrashItem: SpriteRenderer not found in Awake!");
+        if (itemCollider == null) Debug.LogError("TrashItem: Collider2D not found in Awake!");
+        if (visualAnimation == null) Debug.LogWarning("TrashItem: TrashVisualAnimation not found in Awake!"); // Warning, não Error, pois pode só não ter animação
     }
 
     // Chamado em todos os clientes depois que o objeto é spawnado e SyncVars foram inicializadas
-    // Se o GameManager define o sprite no servidor ANTES de spawnar,
-    // essa configuração visual já deve sincronizar com o NetworkIdentity.
-    // Este método pode ser usado para verificar ou adicionar efeitos locais pós-spawn.
     public override void OnStartClient()
     {
         base.OnStartClient();
-        // Debug.Log($"TrashItem spawned on client. NetId: {netId}");
+        Debug.Log($"TrashItem spawned on client. NetId: {netId}, SyncVar spriteIndex: {spriteIndex}");
 
-        // Não precisa mais de UpdateVisualBasedOnType() lendo SyncVar type
+        // Define o sprite inicial baseado no valor sincronizado assim que o objeto aparece no cliente
+        // O hook OnSpriteIndexChanged também chama isso. Chamamos aqui para garantir que o visual é definido
+        // mesmo que o valor inicial da SyncVar seja o padrão (-1) e mude para um índice real logo em seguida.
+         UpdateSpriteBasedOnIndex(spriteIndex); // Chama o método de atualização visual
+    }
+
+
+    // --- Hook da SyncVar `spriteIndex` ---
+    // Chamado em todos os clientes quando spriteIndex muda no servidor.
+    void OnSpriteIndexChanged(int oldIndex, int newIndex)
+    {
+        Debug.Log($"TrashItem {netId}: spriteIndex changed from {oldIndex} to {newIndex}. Updating sprite.");
+        UpdateSpriteBasedOnIndex(newIndex);
+    }
+
+    // --- Método para atualizar o Sprite ---
+    // Obtém o sprite da lista LOCAL `trashSpritesLocal` no Prefab usando o índice sincronizado.
+    void UpdateSpriteBasedOnIndex(int index)
+    {
+        if (spriteRenderer == null)
+        {
+             Debug.LogWarning($"TrashItem {netId}: SpriteRenderer not found to update sprite.");
+             return;
+        }
+
+        if (trashSpritesLocal != null && index >= 0 && index < trashSpritesLocal.Count)
+        {
+             spriteRenderer.sprite = trashSpritesLocal[index];
+             // Debug.Log($"TrashItem {netId}: Sprite updated to {spriteRenderer.sprite.name} using local list.");
+        } else {
+            Debug.LogWarning($"TrashItem {netId}: Invalid sprite index {index} for local list size {trashSpritesLocal?.Count ?? 0}. Cannot update sprite.");
+            spriteRenderer.sprite = null; // Ou um sprite de erro padrão
+        }
     }
 
 
@@ -51,6 +109,7 @@ public class TrashItem : NetworkBehaviour
 
         // --- Desabilita Colisão e Pede para Parar a Animação de Flutuação ---
         if (itemCollider != null) itemCollider.enabled = false;
+
         if (visualAnimation != null)
         {
              visualAnimation.StopMoveAnimation(); // Para a animação de flutuação/rotação
@@ -62,6 +121,7 @@ public class TrashItem : NetworkBehaviour
 
         // --- Animação de Coleta (Escalar e Fade Out) ---
         // Criamos e tocamos a sequência de animação localmente.
+        // Se o objeto for destruído antes do fim da animação, o DOTween cuidará disso.
         Sequence collectionSequence = DOTween.Sequence();
 
         // Animação de Escala para zero
@@ -77,8 +137,6 @@ public class TrashItem : NetworkBehaviour
 
         collectionSequence.Play();
 
-        // Não precisamos de OnComplete, o objeto será destruído pelo servidor.
-        // A sequência de animação será morta no OnDestroy deste objeto pelo DOTween automaticamente,
-        // ou explicitamente pelo OnDestroy do TrashVisualAnimation se ele matar todas as sequências.
+        // O objeto será destruído pelo servidor logo após este RPC terminar em todos os clientes.
     }
 }
