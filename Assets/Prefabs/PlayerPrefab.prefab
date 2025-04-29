@@ -16,7 +16,7 @@ GameObject:
   - component: {fileID: 4947922802535327308}
   - component: {fileID: -6916262786953497840}
   - component: {fileID: 3819083247613332786}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: PlayerPrefab
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -183,7 +183,6 @@ MonoBehaviour:
   maxCollisions: 10
   collisionSkin: 0.05
   virtualJoystick: {fileID: 0}
-  playerVisualAnimations: {fileID: 1869399554333840805}
 --- !u!58 &3819083247613332786
 CircleCollider2D:
   m_ObjectHideFlags: 0
