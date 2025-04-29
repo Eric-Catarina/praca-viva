@@ -1,38 +1,36 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Mirror;
-using System.Collections.Generic;
-using Cinemachine;
+using System.Collections.Generic; // Para Dictionary (usado no Command)
+using Cinemachine; // Para Cinemachine
+
+// Adicione a referência à classe Joystick do pacote
+// using JoystickPack; // Assumindo o namespace
 
 [RequireComponent(typeof(Rigidbody2D))]
-[RequireComponent(typeof(PlayerInput))]
+// >>> REMOVIDO RequireComponent(typeof(PlayerInput)) <<< Não forçamos mais aqui, gerenciamos manualmente
 [RequireComponent(typeof(Collider2D))]
 public class PlayerMovement2D : NetworkBehaviour
 {
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed = 5f;
     [Tooltip("Máximo número de colisores que o Cast pode detectar")]
-    [SerializeField] private int maxCollisions = 10; // Limite de colisores detectados
+    [SerializeField] private int maxCollisions = 10;
     [Tooltip("Distância extra a ser adicionada ao Cast para garantir a detecção")]
-    [SerializeField] private float collisionSkin = 0.05f; // Pequena margem extra
+    [SerializeField] private float collisionSkin = 0.05f;
 
     [Header("References")]
     [Tooltip("Arraste o GameObject do Joystick Virtual da sua UI aqui")]
     [SerializeField] private Joystick virtualJoystick;
-    
-    [SerializeField]
-    private PlayerVisualAnimations playerVisualAnimations;
 
     // Referências a componentes
     private Rigidbody2D rb;
-    private PlayerInput playerInput;
-    private Collider2D playerCollider; // Usaremos este para o Cast
+    private PlayerInput playerInput; // Apenas obtido, não Required via attribute
+    private Collider2D playerCollider;
 
-    // Array para armazenar os resultados do Cast
     private RaycastHit2D[] hitBuffer;
-    private RaycastHit2D[] hitBufferList; // Usado em algumas versões do Cast
+    private RaycastHit2D[] hitBufferList;
 
-    // Armazena o input de Teclado/Gamepad
     private Vector2 moveInputFromAction = Vector2.zero;
 
     // Referência para a Câmera Virtual
@@ -42,110 +40,81 @@ public class PlayerMovement2D : NetworkBehaviour
     void Awake()
     {
         rb = GetComponent<Rigidbody2D>();
+        // >>> Obtém o PlayerInput, mas assume que ele pode começar desabilitado ou ausente <<<
         playerInput = GetComponent<PlayerInput>();
+        // -------------------------------------------------------------------------------
         playerCollider = GetComponent<Collider2D>();
 
         if (rb.bodyType != RigidbodyType2D.Kinematic)
         {
-            Debug.LogWarning("Rigidbody2D BodyType is not Kinematic. Changing to Kinematic for direct movement logic.", this);
-            rb.bodyType = RigidbodyType2D.Kinematic; // Força Kinematic se não for
+            Debug.LogWarning("Rigidbody2D BodyType is not Kinematic. Changing to Kinematic.", this);
+            rb.bodyType = RigidbodyType2D.Kinematic;
         }
-        rb.gravityScale = 0; // Garante sem gravidade
+        rb.gravityScale = 0;
 
-        // Inicializa os buffers de hit
         hitBuffer = new RaycastHit2D[maxCollisions];
-        hitBufferList = new RaycastHit2D[maxCollisions];
-        
+        hitBufferList = new RaycastHit2D[maxCollisions]; // Algumas versões do Cast podem usar isso
 
-        // --- Tenta encontrar o Joystick ---
+        // --- Tenta encontrar o Joystick automaticamente ---
         if (virtualJoystick == null)
         {
             virtualJoystick = FindObjectOfType<Joystick>();
              #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            if (virtualJoystick == null) Debug.LogWarning("Virtual Joystick not found.");
+            if (virtualJoystick == null) Debug.LogWarning("Virtual Joystick not found in scene.");
              #endif
         }
     }
 
     void FixedUpdate()
     {
+        // Apenas o jogador local processa input E se move
         if (!isLocalPlayer) return;
 
         Vector2 currentMoveInput;
-        if (virtualJoystick != null && virtualJoystick.Direction.magnitude > virtualJoystick.DeadZone)
+        // Verifica se o PlayerInput está habilitado (significa que é o local player)
+        // E se o joystick virtual está sendo usado.
+        if (playerInput != null && playerInput.enabled && virtualJoystick != null && virtualJoystick.Direction.magnitude > virtualJoystick.DeadZone)
         {
-            currentMoveInput = virtualJoystick.Direction.normalized; // Use normalized para consistência de velocidade
+             currentMoveInput = virtualJoystick.Direction.normalized;
         }
+        // Se o PlayerInput está habilitado (local player) mas o joystick não está sendo usado (ou não existe)
+        else if (playerInput != null && playerInput.enabled)
+        {
+            currentMoveInput = moveInputFromAction.normalized;
+        }
+        // Se o PlayerInput não está habilitado (não é o local player), input é zero
         else
         {
-            currentMoveInput = moveInputFromAction.normalized; // Use normalized
+             currentMoveInput = Vector2.zero;
         }
 
-        // --- Nova lógica de Colisão para Rigidbody Kinematic ---
-        // Calcula o vetor de movimento desejado para este FixedUpdate
+
+        // --- Lógica de Colisão para Rigidbody Kinematic ---
         Vector2 moveDelta = currentMoveInput * moveSpeed * Time.fixedDeltaTime;
 
-        if (moveDelta.magnitude > float.Epsilon) // Move apenas se houver input significativo
+        if (moveDelta.magnitude > float.Epsilon)
         {
-            // Realiza um "Cast" do colisor do player ao longo do caminho desejado
-            // para ver se ele colidiria com algo.
-            // O Cast retorna o número de colisores detectados.
-            // Usamos playerCollider.Cast() diretamente.
-            int count = playerCollider.Cast(
-                moveDelta,  // A direção e distância do cast (nosso moveDelta)
-                hitBuffer,  // Buffer para armazenar os resultados das colisões
-                moveDelta.magnitude + collisionSkin // Distância máxima do cast + pequena margem
-            );
+            int count = playerCollider.Cast(moveDelta, hitBuffer, moveDelta.magnitude + collisionSkin);
 
-            // Itera sobre os resultados do Cast
             for (int i = 0; i < count; i++)
             {
                 RaycastHit2D hit = hitBuffer[i];
-
-                // >>> IMPORTANTE <<<
-                // Verifica se o objeto colidido NÃO é o próprio jogador (em colisores múltiplos no prefab, etc.)
-                // OU se ele não é um Trigger (não queremos parar em Triggers)
                 if (hit.collider != null && !hit.collider.isTrigger)
                 {
-                    // Encontramos uma colisão sólida!
-
-                    // Calcula a distância que podemos realmente percorrer antes de colidir
-                    // Multiplicamos pela hit.fraction para obter a distância até o ponto de colisão
-                    // Subtraímos collisionSkin para garantir que não "grudamos" na parede
                     float distanceCanMove = hit.fraction * (moveDelta.magnitude + collisionSkin) - collisionSkin;
-
-                    // Ajusta o moveDelta para ser apenas a distância que podemos percorrer
-                    moveDelta = moveDelta.normalized * Mathf.Max(0, distanceCanMove); // Garante que a distância não é negativa
-
-                    // Se ajustamos o movimento para 0 ou quase 0, podemos sair do loop
-                    // pois a próxima colisão (se houver) já foi tratada.
-                    if (moveDelta.magnitude < float.Epsilon)
-                    {
-                         break; // Sai do loop pois não podemos mais nos mover nessa direção
-                    }
+                    moveDelta = moveDelta.normalized * Mathf.Max(0, distanceCanMove);
+                    if (moveDelta.magnitude < float.Epsilon) break;
                 }
-                // Se for um trigger, OnTiggerEnter2D será chamado, mas não queremos que isso impeça o movimento aqui.
             }
-
-            // Agora que ajustamos o moveDelta para respeitar colisões, aplicamos o movimento
             rb.MovePosition(rb.position + moveDelta);
-            playerVisualAnimations.StartMoveAnimation();
-
         }
-        else
-        {
-            playerVisualAnimations.StopMoveAnimation();
-        }
-        // -----------------------------------------------------------
-
-        // Nota: NetworkTransform2D sincroniza a posição/rotação.
     }
 
 
-    // --- Detecção de Colisão Trigger (para coletar lixo) ---
+    // --- Detecção de Colisão Trigger ---
     void OnTriggerEnter2D(Collider2D other)
     {
-        if (!isLocalPlayer) return;
+        if (!isLocalPlayer) return; // Apenas o jogador local interage
 
         TrashItem trashItem = other.GetComponent<TrashItem>();
         if (trashItem != null)
@@ -167,92 +136,111 @@ public class PlayerMovement2D : NetworkBehaviour
                 TrashItem trashItem = trashObject.GetComponent<TrashItem>();
                 if (trashItem != null)
                 {
-                    // Debug.Log($"Server received collection request for {trashItem.type} from player {connectionToClient?.connectionId}");
-
-                    // <<< AÇÃO PRINCIPAL: Destruir o objeto na rede >>>
                     NetworkServer.Destroy(trashObject);
-                    // --------------------------------------------------
-
                     GameManager.Instance?.IncrementCollectedCount();
                 } else { Debug.LogWarning($"Server: Object {trashNetId.netId} missing TrashItem."); }
             } else { Debug.LogWarning($"Server: Object {trashNetId.netId} gameObject is null after TryGetValue."); }
         } else { Debug.LogWarning($"Server: Collection failed for {trashNetId.netId}. Not found on server."); }
     }
 
-    // --- Método chamado pelo PlayerInput ---
+
+    // --- Método chamado pelo PlayerInput (recebe input do novo Input System) ---
+    // IMPORTANTE: Este método SÓ É CHAMADO se o componente PlayerInput estiver HABILITADO.
     void OnMove(InputValue value)
     {
-        if (!isLocalPlayer) return;
+        // isLocalPlayer já é checado pelo fato do PlayerInput estar habilitado apenas para o local player
         moveInputFromAction = value.Get<Vector2>();
+         // Debug.Log($"Input System Move: {moveInputFromAction}");
     }
 
     // --- Network Callbacks ---
 
-    public override void OnStartClient()
+    // >>> NOVO: Chamado APENAS no cliente local quando este objeto Player é criado/spawnado <<<
+    public override void OnStartLocalPlayer()
     {
-        base.OnStartClient();
-        if (!isLocalPlayer)
+        base.OnStartLocalPlayer();
+        Debug.Log("OnStartLocalPlayer called. This is the local player. Enabling input and camera.");
+
+        // Habilita o componente PlayerInput APENAS para o jogador local
+        // Assume que o componente já existe no Prefab mas está desabilitado por padrão
+        playerInput = GetComponent<PlayerInput>(); // Obtém a referência novamente por segurança
+        if (playerInput != null)
         {
-            if (playerInput != null) playerInput.enabled = false;
-            // Desabilitar joystick localmente
-        }
-        else
+            playerInput.enabled = true;
+             Debug.Log("PlayerInput component enabled.");
+        } else { Debug.LogError("PlayerInput component not found on local player prefab!"); }
+
+
+        // --- Configurar a Câmera Virtual para seguir ESTE objeto ---
+        CinemachineVirtualCamera virtualCamera = FindObjectOfType<CinemachineVirtualCamera>();
+        if (virtualCamera != null)
         {
-             if (playerInput != null) playerInput.enabled = true;
-             // Habilitar joystick localmente
+            virtualCamera.Follow = this.transform;
+            Debug.Log("Cinemachine Camera Follow target set to local player.");
+        } else { Debug.LogWarning("Cinemachine Virtual Camera not found!"); }
+
+        // Opcional: Habilitar a UI do Joystick APENAS para o jogador local
+        // Isso depende de onde o GameObject do Joystick está na sua cena.
+        // Se ele é um prefab filho do PlayerPrefab, ele já só existirá no local player.
+        // Se ele está no Canvas principal da cena, talvez precise ser ativado/desativado.
+        if (virtualJoystick != null)
+        {
+            // virtualJoystick.gameObject.SetActive(true); // Se ele começa desativado no prefab da UI
+             // virtualJoystick.GetComponent<CanvasGroup>().interactable = true; // Se usar CanvasGroup para interação
         }
     }
 
-     // >>> NOVO: Chamado APENAS no cliente local <<<
-     public override void OnStartLocalPlayer()
-     {
-         base.OnStartLocalPlayer();
-         Debug.Log("OnStartLocalPlayer called. This is the local player.");
 
-         // --- Configurar a Câmera Virtual ---
-         CinemachineVirtualCamera virtualCamera = FindObjectOfType<CinemachineVirtualCamera>();
-         if (virtualCamera != null)
-         {
-             virtualCamera.Follow = this.transform;
-             Debug.Log("Cinemachine Virtual Camera Follow target set.");
-         } else {
-             Debug.LogWarning("Cinemachine Virtual Camera not found!");
-         }
-     }
+    // >>> REMOVIDO: OnStartClient <<< A lógica foi movida para OnStartLocalPlayer
 
+    // Chamado em TODOS os clientes quando o objeto Player é destruído
     public override void OnStopClient()
     {
         base.OnStopClient();
-         if (playerInput != null) playerInput.enabled = true;
+        // Opcional: Limpeza ou re-habilitação
+        // playerInput.enabled = true; // Não é mais necessário re-habilitar aqui
+        // virtualJoystick?.gameObject.SetActive(false); // Desativar joystick se ele vive no canvas principal
     }
 
+    // >>> REMOVIDO: OnStartServer e OnStopServer <<< Não são essenciais para este problema e podem ser removidos se não tiverem outra lógica
+
+    /*
      public override void OnStartServer()
      {
          base.OnStartServer();
-         if (connectionToClient != null)
-         {
-             // Debug.Log($"Server: Player {connectionToClient.connectionId} spawned.");
-         }
+         if (connectionToClient != null) { Debug.Log($"Server: Player {connectionToClient.connectionId} spawned."); } else { }
      }
 
      public override void OnStopServer()
      {
          base.OnStopServer();
-         if (connectionToClient != null)
-         {
-             // Debug.Log($"Server: Player {connectionToClient.connectionId} stopped.");
-         }
+         if (connectionToClient != null) { Debug.Log($"Server: Player {connectionToClient.connectionId} stopped."); } else { }
      }
+    */
+
 
      // --- Limpeza adicional para a câmera (Opcional) ---
      void OnDestroy()
      {
+         // Verifica se o componente PlayerInput ainda existe antes de tentar Kill Controls
+         // (Embora a sequência seja morta no OnDestroy da classe que a gerencia)
+         // playerInput?.actions?.Disable(); // Opcional: Desabilitar Actions explicitamente
+
          // Encontra a câmera virtual novamente para limpar a referência
-         CinemachineVirtualCamera virtualCamera = FindObjectOfType<CinemachineVirtualCamera>();
-         if (isLocalPlayer && virtualCamera != null && virtualCamera.Follow == this.transform)
+         // Verifica isLocalPlayer para garantir que apenas o player local limpa a câmera
+         if (isLocalPlayer)
          {
-             virtualCamera.Follow = null;
-             Debug.Log("Cinemachine Virtual Camera Follow target cleared on player destroy.");
+            CinemachineVirtualCamera virtualCamera = FindObjectOfType<CinemachineVirtualCamera>();
+            if (virtualCamera != null && virtualCamera.Follow == this.transform)
+            {
+                virtualCamera.Follow = null;
+                Debug.Log("Cinemachine Camera Follow target cleared on player destroy.");
+            }
          }
+
+         // Limpa a animação visual se você usou o script PlayerVisualAnimation
+         // PlayerVisualAnimation visualAnim = GetComponent<PlayerVisualAnimation>();
+         // visualAnim?.StopMoveAnimation(); // Interrompe a animação se estiver rodando
+         // A sequência em si deve ser morta no OnDestroy do PlayerVisualAnimation script.
      }
 }
