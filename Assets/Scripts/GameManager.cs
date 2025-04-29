@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using System.Collections;
 using Random = UnityEngine.Random; // Para evitar conflito com System.Random
 
+// Adicione o using para o arquivo da enumeração se ela estiver em um namespace
+// using SeuProjeto.Enums;
+
+
 public class GameManager : NetworkBehaviour
 {
     // --- Singleton ---
@@ -18,10 +22,16 @@ public class GameManager : NetworkBehaviour
         else if (Instance != this)
         {
             // Log de aviso se encontrar outra instância no cliente que não seja a que deve ser controlada
-            // (a NetworkBehaviour spawnada pelo servidor)
-             if (!GetComponent<NetworkIdentity>().isClient) // Evita log se for apenas um cliente remoto
+             if (isClientOnly) // Mostra o aviso apenas em clientes remotos
              {
-                 Debug.LogWarning("GameManager: More than one instance found in the scene! Check setup.");
+                 Debug.LogWarning("GameManager: Another instance found on client. Using the one from the server.");
+             } else if (isServer && isClient) {
+                 // Este é o Host. Pode ter duas instâncias no Inspector, mas apenas uma NetworkBehaviour ativa.
+                 // A instância 'this' que se torna o Singleton deve ser a NetworkBehaviour.
+             }
+             else // Se for uma instância local não de rede no Host/Editor antes de iniciar
+             {
+                  // Debug.Log("GameManager: Local non-networked instance found."); // Pode acontecer no Editor antes de StartHost
              }
         }
     }
@@ -37,18 +47,18 @@ public class GameManager : NetworkBehaviour
 
 
     [Header("Game Settings")]
-    [SyncVar(hook = nameof(OnTimeChanged))]
-    public float remainingTime = 60f;
+    [SyncVar(hook = nameof(OnTimeChanged))] // Sincroniza o tempo restante
+    public float remainingTime = 60f; // Tempo inicial (será sobrescrito pela dificuldade)
 
-    [SyncVar(hook = nameof(OnTotalTrashChanged))]
-    public int totalTrashCount = 0;
+    [SyncVar(hook = nameof(OnTotalTrashChanged))] // Total de lixo na partida
+    public int totalTrashCount = 0; // Definido no servidor
 
-    [SyncVar(hook = nameof(OnCollectedTrashChanged))]
-    public int collectedTrashCount = 0;
+    [SyncVar(hook = nameof(OnCollectedTrashChanged))] // Contagem de lixo coletado
+    public int collectedTrashCount = 0; // Gerenciado no servidor
 
     [Header("Difficulty Settings")]
     public List<float> difficultyTimes = new List<float> { 120f, 90f, 60f };
-    public List<int> difficultyTrashCounts = new List<int> { 1, 2, 3 };
+    public List<int> difficultyTrashCounts = new List<int> { 10, 20, 30 };
     public List<List<TrashType>> difficultyTrashTypes = new List<List<TrashType>>
     {
         new List<TrashType> { TrashType.Paper }, // Fácil: Só Papel
@@ -70,9 +80,9 @@ public class GameManager : NetworkBehaviour
     [Tooltip("Limite MÁXIMO Y para o spawn aleatório")]
     public float spawnAreaMaxY = 3f;
 
-     // --- Para mapear tipo de lixo para cor (Usado no servidor ANTES de spawnar) ---
+     // --- Para mapear tipo de lixo para cor (Usado no servidor ANTES de spawnar E Cliente no hook) ---
      [Header("Trash Type Colors")]
-     public List<Color> trashTypeColors = new List<Color>(); // Mapeia TrashType (exceto None) para cor
+     public List<Color> trashTypeColors = new List<Color>(); // Mapeia TrashType (exceto None) para cor. Configurar no Inspector.
 
      // --- Game State (Servidor) ---
     private bool gameStarted = false;
@@ -101,7 +111,7 @@ public class GameManager : NetworkBehaviour
      IEnumerator StartGameWithDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
-         if (!isServer) yield break; // Garante que estamos no servidor
+         if (!isServer) yield break;
 
          Debug.Log($"Starting Game - Difficulty: {currentDifficultyIndex}");
 
@@ -114,10 +124,10 @@ public class GameManager : NetworkBehaviour
             totalTrashCount = difficultyTrashCounts[currentDifficultyIndex];
             List<TrashType> typesToSpawn = difficultyTrashTypes[currentDifficultyIndex];
 
-            // --- Spawning do Lixo (AGORA COM POSIÇÕES ALEATÓRIAS) ---
+            // --- Spawning do Lixo ---
             SpawnTrashItems(totalTrashCount, typesToSpawn,
                             spawnAreaMinX, spawnAreaMaxX,
-                            spawnAreaMinY, spawnAreaMaxY); // Passa os limites da área
+                            spawnAreaMinY, spawnAreaMaxY);
 
             collectedTrashCount = 0;
             gameStarted = true;
@@ -129,12 +139,11 @@ public class GameManager : NetworkBehaviour
         {
              Debug.LogError($"Invalid difficulty index ({currentDifficultyIndex}) or difficulty settings incomplete!");
              // Talvez parar o host
-         }
+        }
     }
 
 
     // --- Lógica de Spawning (Servidor) ---
-    // Recebe os limites da área para gerar posições aleatórias
     void SpawnTrashItems(int count, List<TrashType> types,
                          float minX, float maxX, float minY, float maxY)
     {
@@ -143,45 +152,31 @@ public class GameManager : NetworkBehaviour
              Debug.LogError("TrashItemPrefab is not assigned in GameManager!");
              return;
         }
+         // Verificação para a lista de cores (agora usada em OnStartClient do TrashItem também)
          if (trashTypeColors.Count < System.Enum.GetValues(typeof(TrashType)).Length -1) // -1 for None
         {
-             Debug.LogWarning("TrashTypeColors list is not fully assigned in GameManager. Trash may spawn without color!");
-             // Continua, mas com aviso
+             Debug.LogWarning("TrashTypeColors list may not be fully assigned in GameManager. Trash colors may be incorrect.");
         }
 
 
         for (int i = 0; i < count; i++)
         {
-            // Seleciona o tipo de lixo para spawnar (aleatoriamente entre os tipos permitidos)
             TrashType randomType = types[Random.Range(0, types.Count)];
-
-            // --- Gera Posição Aleatória ---
-            Vector3 spawnPos = new Vector3(Random.Range(minX, maxX), Random.Range(minY, maxY), 0f); // Assume 2D no plano XY
-            // -----------------------------
+            Vector3 spawnPos = new Vector3(Random.Range(minX, maxX), Random.Range(minY, maxY), 0f);
 
             GameObject trashGO = Instantiate(trashItemPrefab, spawnPos, Quaternion.identity);
             TrashItem trashItem = trashGO.GetComponent<TrashItem>();
-            SpriteRenderer trashRenderer = trashGO.GetComponent<SpriteRenderer>(); // Pega o SpriteRenderer
+            // SpriteRenderer trashRenderer = trashGO.GetComponent<SpriteRenderer>(); // Não precisamos mais definir a cor aqui no servidor
 
              if (trashItem != null)
              {
                   // Define o tipo do item ANTES de spawnar na rede
                  trashItem.type = randomType;
 
-                 // --- Define a Cor no Servidor ANTES de Spawnar ---
-                 // Isso garante que a cor inicial é sincronizada pelo Mirror
-                 if (trashRenderer != null)
-                 {
-                     int typeIndex = (int)randomType - 1; // Assumindo que None é 0, e Paper=1, Plastic=2, etc.
-                     if (typeIndex >= 0 && typeIndex < trashTypeColors.Count)
-                     {
-                         trashRenderer.color = trashTypeColors[typeIndex];
-                     } else {
-                         Debug.LogWarning($"Color not defined for trash type {randomType}. Using white.");
-                         trashRenderer.color = Color.white;
-                     }
-                 }
-                 // --------------------------------------------------
+                 // A COR DO SPRITE SERÁ DEFINIDA NO CLIENTE EM OnStartClient DO TRASHITEM
+                 // LENDO A SyncVar 'type' E USANDO UMA LISTA DE CORES ACESSÍVEL NO CLIENTE
+                 // (Pode ser uma cópia da lista aqui ou uma lista separada no TrashItem)
+
              } else {
                  Debug.LogError($"Spawned object {trashItemPrefab.name} is missing TrashItem component!");
              }
@@ -235,7 +230,7 @@ public class GameManager : NetworkBehaviour
         gameEnded = true;
         gameStarted = false;
 
-        Debug.Log($"Game Ended. Result: {(win ? "Victory" : "Defeat")}");
+        Debug.Log($"Game Ended. Result: {(win ? "Victory" : "Derrota")}");
         RpcEndGame(win);
 
         // Opcional: Parar o host/servidor após um delay
@@ -254,7 +249,7 @@ public class GameManager : NetworkBehaviour
      /*
      IEnumerator StopHostAfterDelay(float delay)
      {
-         yield return new WaitForSecondsRealtime(delay); // Use Realtime para não ser afetado pelo timer do jogo
+         yield return new WaitForSecondsRealtime(delay);
          if (isServer)
          {
              NetworkManager.singleton.StopHost();
@@ -304,21 +299,18 @@ public class GameManager : NetworkBehaviour
 
 
      // --- Para mapear tipo de lixo para cor (Cliente) ---
-     // Se o TrashItem.UpdateSpriteBasedOnType precisar de uma lista de cores no cliente
-     // para manter a cor após spawn, pode usar isso.
-     // O servidor já define a cor ANTES de spawnar, o que DEVERIA sincronizar,
-     // mas as vezes hooks ou OnStartClient podem ser necessários para reforçar.
-     /*
+     // Este método é chamado pelo TrashItem.OnStartClient para obter a cor
+     // correspondente ao seu tipo sincronizado.
      public Color GetColorForTrashType(TrashType type)
      {
-         int index = (int)type -1;
+         int index = (int)type -1; // Ajusta índice se None for 0
           if (index >= 0 && index < trashTypeColors.Count)
          {
              return trashTypeColors[index];
          }
-         return Color.white; // Cor padrão
+         Debug.LogWarning($"Color not found for trash type: {type}. Index {index}. Using white.");
+         return Color.white; // Cor padrão se não encontrar
      }
-     */
 
       // --- Para mapear tipo de lixo para Sprite (Cliente) ---
      // Se você tiver sprites diferentes em vez de apenas cores

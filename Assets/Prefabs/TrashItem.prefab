@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 6706181648913288929}
   - component: {fileID: 6711979328040251027}
   - component: {fileID: 8645453338360501593}
+  - component: {fileID: -9061073930801251082}
   m_Layer: 0
   m_Name: TrashItem
   m_TagString: Untagged
@@ -30,7 +31,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 2, y: 2, z: 2}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 0}
@@ -76,7 +77,7 @@ SpriteRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
-  m_Sprite: {fileID: 21300000, guid: 1d42965cffd525eb6af46bda9281d6a2, type: 3}
+  m_Sprite: {fileID: 21300000, guid: ba84e4972a13dc211aaf02417a6296ec, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -155,3 +156,21 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0.05
   type: 1
+--- !u!114 &-9061073930801251082
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3229956368108559629}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2fddb408a52d47b5bbf464c9dfa82bcf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  floatHeight: 0
+  floatDuration: 1.5
+  floatEase: 4
+  rotateAngle: 5
+  rotateDuration: 2
+  rotateEase: 4
